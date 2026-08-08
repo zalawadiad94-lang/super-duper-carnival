@@ -1,0 +1,29 @@
+{
+  "_comment": "Copy to config.json in the skill root and edit. Everything is optional — with no config the skill just asks.",
+
+  "default_sign": "leo",
+  "birth_date": "1994-08-08",
+
+  "_birth_time_comment": "Only needed for moon/rising/house questions. Local time at the birth city.",
+  "birth_time": "06:45",
+  "birth_place": "Ahmedabad, India",
+
+  "_system_comment": "western (sun sign) | vedic (rashi/moon sign, the Indian default) | both",
+  "system": "western",
+  "_rashi_comment": "Your Vedic moon sign, if you know it. In India this is what 'my sign' means.",
+  "rashi": null,
+
+  "preferences": {
+    "_period_comment": "daily | weekly | monthly — the default when the user doesn't say",
+    "period": "daily",
+    "_variant_comment": "general | love | work",
+    "variant": "general",
+    "length": "medium"
+  },
+
+  "_people_comment": "Other signs to read for, by name. Used for 'read for me and my partner' or compatibility questions.",
+  "people": [
+    { "name": "Priya", "sign": "aries" },
+    { "name": "Dad", "birth_date": "1962-11-30" }
+  ]
+}
