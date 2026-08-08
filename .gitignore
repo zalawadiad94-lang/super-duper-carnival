@@ -1,0 +1,5 @@
+__pycache__/
+*.py[cod]
+
+# Personal config: default sign, birth details
+.claude/skills/horoscope/config.json
