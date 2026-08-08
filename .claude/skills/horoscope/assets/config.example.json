@@ -8,6 +8,11 @@
   "birth_time": "06:45",
   "birth_place": "Ahmedabad, India",
 
+  "_system_comment": "western (sun sign) | vedic (rashi/moon sign, the Indian default) | both",
+  "system": "western",
+  "_rashi_comment": "Your Vedic moon sign, if you know it. In India this is what 'my sign' means.",
+  "rashi": null,
+
   "preferences": {
     "_period_comment": "daily | weekly | monthly — the default when the user doesn't say",
     "period": "daily",

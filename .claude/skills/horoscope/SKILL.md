@@ -1,6 +1,6 @@
 ---
 name: horoscope
-description: Fetches and presents real daily, weekly, or monthly horoscope readings from live astrology sites, and answers astrology questions in general — sun/moon/rising placements, birth charts, sign compatibility, elements and modalities, houses, and transits like Mercury retrograde. Use this skill whenever the user mentions their horoscope, their star sign or zodiac sign, asks "what do the stars say", wants a reading for today or the week ahead, asks whether two signs are compatible, asks what a placement or transit means, or mentions astrology in any form — including casual asides like "typical Scorpio" or "is Mercury still retrograde?" Use it even when they don't say the word "horoscope", and use it rather than answering from memory, because readings change daily and must be fetched fresh.
+description: Fetches real daily, weekly, or monthly horoscope readings from live astrology sites, computes accurate natal charts from birth date/time/place, and answers astrology questions in both the Western and Vedic (jyotish) traditions — sun/moon/rising, houses and aspects, compatibility, and Indian-system rashi, nakshatra, lagna, kundli, and Vimshottari dasha. Use this skill whenever the user mentions their horoscope, star sign, zodiac sign, rashi or birth chart, asks "what do the stars say", wants a reading for today or the week ahead, asks whether two signs are compatible, asks what a placement, dasha, or transit means, or mentions astrology in any form — including casual asides like "typical Scorpio" or "is Mercury still retrograde?" Use it even when they don't say the word "horoscope", and use it rather than answering from memory, because readings change daily and chart positions must be computed rather than recalled.
 ---
 
 # Horoscope & astrology
@@ -27,6 +27,32 @@ is yours, and it's the one thing that makes this skill worse than useless.
 
 The same goes for a reading you fetched yesterday, or one you half-remember from
 training. Today's reading exists only on today's page.
+
+## "My sign" is ambiguous — find out which one they mean
+
+Western astrology means the **sun** sign. Vedic astrology (jyotish), which is
+the default across India, means the **moon** sign — the *rashi*. Same birth
+data, two different answers, and for most people they're different signs.
+
+This matters more than it sounds. Someone born 21 June 1997 in Gujarat is a
+Gemini by western reckoning and Dhanu (Sagittarius) by rashi. Tell them they're
+"actually" a Gemini and you've contradicted what their family, their local
+astrologer, and every Indian newspaper column have told them their whole life —
+and you're the one who's wrong, because they were answering a different
+question. The two systems are separate maps, not competing claims.
+
+So when someone states a sign that doesn't match what you'd compute:
+
+- **Don't correct them.** Work out which system makes their answer true —
+  usually their rashi. Run `scripts/chart.py` and check.
+- If the numbers line up, say so directly: their sign is right, and here's the
+  system it belongs to.
+- Ask which tradition they want when it's genuinely unclear, especially for
+  users in India or the wider South Asian diaspora. Matchmaking, muhurta, and
+  temple readings are always Vedic; a horoscope app is western.
+
+Where the systems agree — often the ascendant — say so. It's reassuring and
+it's true.
 
 ## Resolving the sign
 
@@ -130,19 +156,35 @@ were the reading.
 
 ## Answering astrology questions
 
-These don't need a fetch — they need the interpretive vocabulary, which is in
-`references/astrology.md`. Read it for placements, houses, aspects,
-compatibility, and transits. Answer from within the tradition: explain what
+These don't need a fetch — they need the interpretive vocabulary.
+`references/astrology.md` covers the western system: placements, houses,
+aspects, compatibility, transits. `references/vedic.md` covers jyotish — rashi,
+nakshatra and pada, lagna, the ayanamsa, and Vimshottari dasha. Read whichever
+matches the tradition the user is working in, and both when they want the
+comparison. Answer from within the tradition: explain what
 astrologers mean by a thing, confidently and specifically, the way you'd explain
 any other system of ideas. "Saturn return" has a real, teachable meaning.
 
 Two places to be straight with the user:
 
 - **Moon and rising signs need an exact birth time and place**, not just a date.
-  Sun sign is the only one a birthday alone determines. If someone asks about
-  their rising sign, ask for time and city, then point them at a chart
-  calculator (`references/sources.md`) — computing house cusps needs ephemeris
-  data this skill doesn't carry, and guessing produces a confidently wrong chart.
+  Sun sign is the only one a birthday alone determines. Collect date, time, and
+  city, then compute — never estimate. A guessed ascendant misplaces all twelve
+  houses, so it isn't a rough answer, it's a different chart:
+
+  ```bash
+  pip install pyswisseph          # once
+  python3 scripts/chart.py --date 1997-06-21 --time 08:00 --city junagadh
+  python3 scripts/chart.py --date 1990-02-03 --time 14:20 \
+          --lat 51.5074 --lon -0.1278 --tz 0    # any location
+  ```
+
+  It prints both systems at once: western placements by house with aspects and
+  orbs, and the Vedic side — rashi, nakshatra and pada, lagna, and the
+  Vimshottari dasha timeline. `--json` for structured output. If the user has
+  no birth time, say which parts of the chart that rules out rather than
+  quietly filling them in; noon is a common convention but the ascendant it
+  produces is meaningless.
 - **Current transits are dated facts** — whether Mercury is retrograde *right
   now*, where the moon is today. Look those up rather than recalling them; your
   training data has a cutoff and the sky doesn't.
