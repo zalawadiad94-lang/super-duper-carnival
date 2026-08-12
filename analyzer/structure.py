@@ -62,6 +62,10 @@ SIGNIFICANCE_ATR = 0.25
 # last two points happen to be ordered.
 CONTAINMENT_ATR = 1.0
 
+# Hard cap on how wide a single support/resistance zone may grow. A band
+# several ATR tall cannot anchor a stop and is not a level in any useful sense.
+MAX_ZONE_ATR = 1.5
+
 
 def describe_structure(
     swings: list[Swing], atr_value: float = 0.0, lookback: int = 6
@@ -127,10 +131,18 @@ def build_zones(
         return [], []
 
     tolerance = atr_value * 0.6
+    # Neighbour-distance clustering alone chains: on a busy chart every swing
+    # sits within tolerance of the previous one and the whole range collapses
+    # into a single "zone". Capping total width keeps zones tradeable.
+    max_width = atr_value * MAX_ZONE_ATR
     clusters: list[list[Swing]] = []
 
     for swing in sorted(swings, key=lambda s: s.price):
-        if clusters and abs(swing.price - clusters[-1][-1].price) <= tolerance:
+        if (
+            clusters
+            and abs(swing.price - clusters[-1][-1].price) <= tolerance
+            and (swing.price - clusters[-1][0].price) <= max_width
+        ):
             clusters[-1].append(swing)
         else:
             clusters.append([swing])

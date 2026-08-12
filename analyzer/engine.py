@@ -11,12 +11,26 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from . import contracts, indicators, structure
+from . import indicators, instruments, structure
 from .data import INTRADAY, Series
 
-# A signal needs this many agreeing checks, with at most MAX_DISSENT against.
-MIN_CONFLUENCE = 4
-MAX_DISSENT = 1
+# Checks that establish direction. A signal needs MIN_TREND_AGREEMENT of them
+# agreeing and none against.
+# Direction comes from the primary filter, the moving-average relationship,
+# and swing structure. Where price sits *relative* to an average is not a
+# trend fact — it is exactly what moves during a pullback — so "Price vs
+# 50 EMA" is a timing check, not a trend one.
+TREND_CHECKS = frozenset({"200 SMA", "20/50 EMA", "Structure"})
+
+# Two must agree with none against. In a range the Structure vote is neutral,
+# so two is what keeps boundary trades reachable; the location gate then
+# decides whether the boundary is the right one.
+MIN_TREND_AGREEMENT = 2
+
+# Checks that time the entry. These may dissent during a pullback without
+# vetoing the trade, provided price is at the matching zone.
+TIMING_CHECKS = frozenset({"Price vs 50 EMA", "RSI 14", "MACD", "VWAP"})
+
 MIN_RR = 1.5
 
 # Stop sits this many ATR beyond the structural level, absorbing normal noise.
@@ -53,7 +67,9 @@ class Analysis:
     rr: float | None = None
     invalidation: float | None = None
     confidence: str = "Low"
-    sizing: contracts.Sizing | None = None
+    setup: str = "none"
+    instrument: instruments.Instrument | None = None
+    sizing: instruments.Sizing | None = None
     warnings: list[str] = field(default_factory=list)
 
 
@@ -66,10 +82,10 @@ def _last(series: list[float | None]) -> float | None:
 
 def analyse(
     series: Series,
-    symbol: str,
+    instrument: instruments.Instrument,
     timeframe: str,
     capital: float | None = None,
-    risk_pct: float = contracts.MAX_RISK_PCT,
+    risk_pct: float = instruments.MAX_RISK_PCT,
 ) -> Analysis:
     closes, highs, lows = series.closes, series.highs, series.lows
     price = closes[-1]
@@ -80,6 +96,8 @@ def analyse(
             f"Only {len(closes)} bars supplied. The 200 SMA needs 200; "
             f"primary-trend reading is unavailable or unreliable."
         )
+
+    warnings.extend(_asset_class_warnings(instrument, timeframe))
 
     sma200 = indicators.sma(closes, 200)
     ema20 = indicators.ema(closes, 20)
@@ -156,7 +174,7 @@ def analyse(
         votes.append(Vote("Structure", 0, market_structure))
 
     # --- Volume confirmation (non-directional) ---
-    volume_note = _volume_note(series, symbol, warnings)
+    volume_note = _volume_note(series, instrument, warnings)
 
     bull = sum(1 for v in votes if v.direction > 0)
     bear = sum(1 for v in votes if v.direction < 0)
@@ -184,25 +202,71 @@ def analyse(
     condition = _condition(price, supports, resistances, atr_value, market_structure)
 
     analysis = Analysis(
-        symbol=symbol, timeframe=timeframe, price=price, bias=bias,
+        symbol=instrument.symbol, timeframe=timeframe, price=price, bias=bias,
         trend_strength=trend_strength, supports=supports, resistances=resistances,
         market_structure=market_structure, votes=votes, atr_value=atr_value,
         divergence=divergence, volume_note=volume_note, condition=condition,
-        decision="WAIT", warnings=warnings,
+        decision="WAIT", warnings=warnings, instrument=instrument,
     )
 
-    _decide(analysis, bull, bear, capital, symbol, risk_pct)
+    _decide(analysis, bull, bear, capital, instrument, risk_pct)
     return analysis
 
 
-def _volume_note(series: Series, symbol: str, warnings: list[str]) -> str:
+def _asset_class_warnings(
+    instrument: instruments.Instrument, timeframe: str
+) -> list[str]:
+    """Risks that depend on what is being traded rather than on the chart."""
+    out: list[str] = []
+
+    if instrument.verify_lot:
+        out.append(
+            f"{instrument.symbol} lot size is revised frequently by the "
+            f"exchange. Sizing assumes 1 unit per point — pass the current "
+            f"lot size or the position will be wrong."
+        )
+
+    if instrument.asset_class == instruments.EQUITY:
+        out.append(
+            "Equities gap over stops on overnight news, earnings, and "
+            "corporate actions. A stop is not a guaranteed exit price; size "
+            "for the possibility of a worse fill."
+        )
+        out.append(
+            "Check for splits, bonuses, and dividends in the price history — "
+            "unadjusted data creates false gaps that distort every indicator."
+        )
+        if timeframe in INTRADAY:
+            out.append(
+                "Circuit limits can halt trading before a stop is reached."
+            )
+    elif instrument.asset_class == instruments.COMMODITY:
+        out.append(
+            "Futures contracts expire. Confirm you are analysing the active "
+            "contract, and note that rollover creates artificial gaps in "
+            "continuous charts."
+        )
+        if instrument.currency == "INR":
+            out.append(
+                "MCX prices reflect the international price, USDINR, and "
+                "import duty. A currency move alone can produce a trend here "
+                "with no move in the underlying commodity."
+            )
+
+    return out
+
+
+def _volume_note(
+    series: Series, instrument: instruments.Instrument, warnings: list[str]
+) -> str:
     if not series.has_volume:
         return "No volume data supplied — breakout confirmation unavailable."
 
-    if not contracts.has_real_volume(symbol):
+    if not instrument.real_volume:
         warnings.append(
-            f"{symbol} volume is broker tick-count, not exchange volume. "
-            f"It cannot confirm a breakout; use MCX or COMEX futures for that."
+            f"{instrument.symbol} volume is broker tick-count, not exchange "
+            f"volume. It cannot confirm a breakout; use an exchange-traded "
+            f"contract for that."
         )
         return "Tick volume only — not used for confirmation."
 
@@ -273,26 +337,118 @@ def _condition(
     return "Price is between zones — no high-quality location."
 
 
+def _split_votes(votes: list[Vote]) -> tuple[tuple[int, int], tuple[int, int]]:
+    """Separate direction-setting checks from timing checks.
+
+    Trend votes establish which way the market is going. Timing votes say
+    where momentum is *right now*, and during a healthy pullback they point
+    against the trend by design — that is what a pullback is. Counting them
+    together lets momentum veto every pullback entry, leaving only breakouts.
+    """
+    trend_bull = sum(1 for v in votes if v.name in TREND_CHECKS and v.direction > 0)
+    trend_bear = sum(1 for v in votes if v.name in TREND_CHECKS and v.direction < 0)
+    timing_bull = sum(1 for v in votes if v.name in TIMING_CHECKS and v.direction > 0)
+    timing_bear = sum(1 for v in votes if v.name in TIMING_CHECKS and v.direction < 0)
+    return (trend_bull, trend_bear), (timing_bull, timing_bear)
+
+
+def _pick_targets(
+    entry: float, risk: float, zones: list[structure.Zone], direction: int,
+    market_structure: str,
+) -> tuple[float | None, float | None, int]:
+    """Choose the first target that clears the reward-to-risk floor.
+
+    Taking the *nearest* opposing zone as Target 1 rejects most otherwise
+    valid trend trades, because a minor level usually sits inside the stop
+    distance. Traders trade through minor levels; what matters is that the
+    first target is far enough to be worth the risk. So zones are scanned
+    outward and the first one at or beyond MIN_RR x risk becomes Target 1,
+    with the count of levels being passed through reported so the cost is
+    visible.
+
+    In a range nothing is skipped — the boundary is the trade, and assuming
+    price will cut through it is exactly the mistake range-trading avoids.
+    """
+    ordered = [z for z in zones]
+    ordered.sort(key=lambda z: (z.mid - entry) * direction)
+    ahead = [z for z in ordered if (z.mid - entry) * direction > 0]
+
+    if not ahead:
+        # No structure ahead: fall back to R-multiples, trending only.
+        if market_structure == "range":
+            return None, None, 0
+        return entry + direction * 2.5 * risk, entry + direction * 4.0 * risk, 0
+
+    if market_structure == "range":
+        first = ahead[0]
+        second = ahead[1] if len(ahead) > 1 else None
+        return first.mid, (second.mid if second else None), 0
+
+    for i, zone in enumerate(ahead):
+        if abs(zone.mid - entry) >= MIN_RR * risk:
+            nxt = ahead[i + 1].mid if i + 1 < len(ahead) else (
+                entry + direction * abs(zone.mid - entry) * 1.6)
+            return zone.mid, nxt, i
+
+    # Every zone ahead is too close; project beyond the last one.
+    return (entry + direction * 2.5 * risk,
+            entry + direction * 4.0 * risk,
+            len(ahead))
+
+
 def _decide(
     a: Analysis, bull: int, bear: int, capital: float | None,
-    symbol: str, risk_pct: float,
+    instrument: instruments.Instrument, risk_pct: float,
 ) -> None:
-    """Emit a signal only on strong agreement, good location, and R:R >= 1.5."""
+    """Emit a signal only on trend agreement, good location, and R:R >= 1.5.
+
+    Two setups qualify. A *continuation* has trend and timing both aligned. A
+    *pullback* has the trend aligned while timing dissents, and is only taken
+    at the matching zone — buying a dip into support, selling a rally into
+    resistance. Anything else waits.
+    """
     if a.atr_value <= 0:
         a.warnings.append("ATR unavailable — cannot place a volatility-based stop.")
         return
 
-    long_ok = bull >= MIN_CONFLUENCE and bear <= MAX_DISSENT
-    short_ok = bear >= MIN_CONFLUENCE and bull <= MAX_DISSENT
+    (trend_bull, trend_bear), (timing_bull, timing_bear) = _split_votes(a.votes)
 
-    if not (long_ok or short_ok):
+    long_trend = trend_bull >= MIN_TREND_AGREEMENT and trend_bear == 0
+    short_trend = trend_bear >= MIN_TREND_AGREEMENT and trend_bull == 0
+
+    if not (long_trend or short_trend):
         a.warnings.append(
-            f"Indicators conflict ({bull} bullish vs {bear} bearish). "
-            f"A signal needs at least {MIN_CONFLUENCE} agreeing with no more "
-            f"than {MAX_DISSENT} against."
+            f"Trend checks disagree ({trend_bull} bullish vs {trend_bear} "
+            f"bearish of {len(TREND_CHECKS)}). Direction is unclear, so there "
+            f"is nothing to time an entry against."
         )
         a.confidence = "Low"
         return
+
+    near_sup_pre, near_res_pre = _location(
+        a.price, a.supports, a.resistances, a.atr_value)
+
+    if long_trend:
+        timing_against = timing_bear > timing_bull
+        at_zone = near_sup_pre
+    else:
+        timing_against = timing_bull > timing_bear
+        at_zone = near_res_pre
+
+    a.setup = "continuation"
+    if timing_against:
+        if not at_zone:
+            side = "support" if long_trend else "resistance"
+            a.warnings.append(
+                f"Trend is intact but momentum has turned against it and price "
+                f"is not at {side}. Entering here is chasing a counter-move "
+                f"with no location edge — wait for the pullback to reach a zone."
+            )
+            a.confidence = "Low"
+            return
+        a.setup = "pullback"
+
+    long_ok, short_ok = long_trend, short_trend
 
     # Location gate. Trend votes inside a range are unreliable — the same
     # oscillation that produces them reverses at the boundary. Only take the
@@ -322,9 +478,8 @@ def _decide(
         base = a.supports[0]
         entry = min(a.price, base.high) if a.price > base.high else a.price
         stop = base.low - STOP_ATR_MULT * a.atr_value
-        t1 = a.resistances[0].mid if a.resistances else entry + 2 * a.atr_value
-        t2 = (a.resistances[1].mid if len(a.resistances) > 1
-              else entry + 3.5 * a.atr_value)
+        t1, t2, skipped = _pick_targets(
+            entry, abs(entry - stop), a.resistances, 1, a.market_structure)
         invalidation = base.low
         direction = 1
     else:
@@ -334,11 +489,17 @@ def _decide(
         base = a.resistances[0]
         entry = max(a.price, base.low) if a.price < base.low else a.price
         stop = base.high + STOP_ATR_MULT * a.atr_value
-        t1 = a.supports[0].mid if a.supports else entry - 2 * a.atr_value
-        t2 = (a.supports[1].mid if len(a.supports) > 1
-              else entry - 3.5 * a.atr_value)
+        t1, t2, skipped = _pick_targets(
+            entry, abs(entry - stop), a.supports, -1, a.market_structure)
         invalidation = base.high
         direction = -1
+
+    if t1 is None:
+        a.warnings.append(
+            "No target zone ahead and structure is a range — nothing to aim "
+            "at that justifies the risk."
+        )
+        return
 
     risk = abs(entry - stop)
     reward = abs(t1 - entry)
@@ -361,6 +522,13 @@ def _decide(
     a.entry, a.stop, a.target1, a.target2 = entry, stop, t1, t2
     a.rr, a.invalidation = rr, invalidation
 
+    if skipped:
+        a.warnings.append(
+            f"Target 1 is beyond {skipped} nearer zone(s). The trade must pass "
+            f"through {'them' if skipped > 1 else 'it'} to reach target, which "
+            f"is where a continuation setup most often stalls."
+        )
+
     if rr < MIN_RR:
         a.warnings.append(
             f"Reward-to-risk is {rr:.2f}, below the {MIN_RR} floor. "
@@ -371,17 +539,19 @@ def _decide(
 
     a.decision = "Buy" if direction == 1 else "Sell"
 
-    agreement = max(bull, bear) / max(bull + bear, 1)
-    if agreement >= 0.85 and rr >= 2.0 and a.trend_strength == "Strong":
+    if (a.setup == "continuation" and rr >= 2.0
+            and a.trend_strength == "Strong"):
         a.confidence = "High"
-    elif agreement >= 0.7 and rr >= 1.5:
+    elif rr >= MIN_RR:
         a.confidence = "Medium"
     else:
         a.confidence = "Low"
 
-    # A boundary trade in a range is a mean-reversion scalp, never a
-    # high-confidence trend entry.
-    if a.market_structure == "range" and a.confidence == "High":
+    # A pullback is an entry against current momentum, and a range boundary
+    # trade is mean reversion. Neither is a high-confidence trend entry.
+    if a.confidence == "High" and (
+        a.setup == "pullback" or a.market_structure == "range"
+    ):
         a.confidence = "Medium"
 
     # Divergence against the signal caps confidence.
@@ -391,14 +561,12 @@ def _decide(
         a.confidence = "Low" if a.confidence == "Medium" else "Medium"
 
     if capital:
-        contract = contracts.resolve(symbol)
-        if contract:
-            a.sizing = contracts.size_position(
-                capital, entry, stop, contract, risk_pct
+        a.sizing = instruments.size_position(
+            capital, entry, stop, instrument, risk_pct
+        )
+        if not a.sizing.affordable:
+            a.decision = "WAIT"
+            a.warnings.append(
+                "Position cannot be sized within the risk limit — "
+                "see sizing note."
             )
-            if not a.sizing.affordable:
-                a.decision = "WAIT"
-                a.warnings.append(
-                    "Position cannot be sized within the risk limit — "
-                    "see sizing note."
-                )
