@@ -6,6 +6,20 @@ app, a CLI, or a Python package.
 
 No third-party packages. Python 3.10+.
 
+## Running it
+
+**Double-click a launcher** — no command line needed:
+
+- Windows: `Start-Windows.bat`
+- macOS / Linux: `Start-Mac-Linux.command`
+
+Your browser opens at `http://127.0.0.1:8000`. The launchers check for
+Python 3.10+ and print install instructions if it is missing. On macOS, the
+first run may need right-click → Open, to satisfy Gatekeeper on an unsigned
+script.
+
+**Or from a terminal:**
+
 ```bash
 python3 app.py --open        # browser interface
 python3 -m unittest discover -s tests
