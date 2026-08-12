@@ -101,29 +101,71 @@ def scan_directory(
     return rows
 
 
+# Compressed explanations for a scan row, matched against the warning text
+# the engine produced. Keeps the table readable without hiding the reason.
+_REASONS = (
+    ("Trend checks disagree", "no clear trend"),
+    ("below the 1.5 floor", "R:R too low"),
+    ("chasing a counter-move", "momentum against, off-zone"),
+    ("wrong side of entry", "price extended"),
+    ("no edge", "range, wrong boundary"),
+    ("nothing to aim at", "range, no target"),
+    ("cannot be sized", "exceeds risk limit"),
+    ("cannot anchor a stop", "no zone for a stop"),
+    ("ATR unavailable", "no volatility reading"),
+)
+
+
+def wait_reason(analysis: Analysis) -> str:
+    """Short explanation of why a row is not actionable."""
+    joined = " ".join(analysis.warnings)
+    for needle, label in _REASONS:
+        if needle in joined:
+            return label
+    return ""
+
+
 def render_table(rows: list[ScanRow]) -> str:
-    """Fixed-width summary of a scan."""
-    header = (f"{'SYMBOL':<14}{'DECISION':<10}{'CONF':<8}{'BIAS':<10}"
-              f"{'ENTRY':>12}{'STOP':>12}{'TARGET 1':>12}{'R:R':>7}")
+    """Fixed-width summary of a scan.
+
+    Levels are printed only on actionable rows. A WAIT row that still showed
+    an entry and stop invites exactly the misread this tool exists to avoid,
+    so those cells are blanked and replaced by the reason it waited.
+    """
+    header = (f"{'SYMBOL':<13}{'DECISION':<9}{'CONF':<7}{'BIAS':<9}"
+              f"{'ENTRY':>11}{'STOP':>11}{'TARGET 1':>11}{'R:R':>6}  WHY")
     lines = [header, "-" * len(header)]
 
     for row in rows:
         if row.analysis is None:
-            lines.append(f"{row.symbol:<14}{'ERROR':<10}{(row.error or '')[:60]}")
+            detail = " ".join((row.error or "").split())
+            lines.append(f"{row.symbol:<13}{'ERROR':<9}{'':<7}{'':<9}"
+                         f"{'—':>11}{'—':>11}{'—':>11}{'—':>6}  {detail[:44]}")
             continue
+
         a = row.analysis
-        entry = f"{a.entry:,.2f}" if a.entry else "—"
-        stop = f"{a.stop:,.2f}" if a.stop else "—"
-        t1 = f"{a.target1:,.2f}" if a.target1 else "—"
-        rr = f"{a.rr:.2f}" if a.rr else "—"
+        actionable = a.decision in ("Buy", "Sell")
+        if actionable:
+            entry = f"{a.entry:,.2f}"
+            stop = f"{a.stop:,.2f}"
+            t1 = f"{a.target1:,.2f}"
+            rr = f"{a.rr:.2f}"
+            why = a.setup
+        else:
+            entry = stop = t1 = rr = "—"
+            why = wait_reason(a)
+
         lines.append(
-            f"{row.symbol:<14}{a.decision:<10}{a.confidence:<8}{a.bias:<10}"
-            f"{entry:>12}{stop:>12}{t1:>12}{rr:>7}"
+            f"{row.symbol:<13}{a.decision:<9}{a.confidence:<7}{a.bias:<9}"
+            f"{entry:>11}{stop:>11}{t1:>11}{rr:>6}  {why}"
         )
 
     actionable = sum(1 for r in rows
                      if r.analysis and r.analysis.decision in ("Buy", "Sell"))
+    failed = sum(1 for r in rows if r.analysis is None)
     lines.append("")
-    lines.append(f"{actionable} actionable of {len(rows)} scanned. "
-                 f"The rest are WAIT or failed to load.")
+    summary = f"{actionable} actionable of {len(rows)} scanned"
+    if failed:
+        summary += f", {failed} failed to load"
+    lines.append(summary + ". Levels are shown only where a trade qualifies.")
     return "\n".join(lines)

@@ -127,20 +127,27 @@ def run_scan(payload: dict) -> dict:
     feed = feeds.build(provider, exchange=payload.get("exchange") or "MCX")
     rows = scanner.scan_feed(feed, symbols, timeframe, capital)
 
-    return {"rows": [
-        {
+    def row_dict(r):
+        a = r.analysis
+        if a is None:
+            return {"symbol": r.symbol, "error": r.error}
+        actionable = a.decision in ("Buy", "Sell")
+        return {
             "symbol": r.symbol,
-            "error": r.error,
-            "decision": r.analysis.decision if r.analysis else None,
-            "confidence": r.analysis.confidence if r.analysis else None,
-            "bias": r.analysis.bias if r.analysis else None,
-            "entry": r.analysis.entry if r.analysis else None,
-            "stop": r.analysis.stop if r.analysis else None,
-            "target1": r.analysis.target1 if r.analysis else None,
-            "rr": r.analysis.rr if r.analysis else None,
+            "error": None,
+            "decision": a.decision,
+            "confidence": a.confidence,
+            "bias": a.bias,
+            # Levels are omitted unless the trade qualifies, so a WAIT row in
+            # a watchlist cannot be misread as a tradeable setup.
+            "entry": a.entry if actionable else None,
+            "stop": a.stop if actionable else None,
+            "target1": a.target1 if actionable else None,
+            "rr": a.rr if actionable else None,
+            "why": a.setup if actionable else scanner.wait_reason(a),
         }
-        for r in rows
-    ]}
+
+    return {"rows": [row_dict(r) for r in rows]}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -523,20 +530,22 @@ async function runScan(){
 
     const rows = data.rows.map(r => r.error
       ? `<tr><td>${esc(r.symbol)}</td><td class="bear">ERROR</td>
-         <td colspan="5">${esc(r.error)}</td></tr>`
+         <td colspan="6">${esc(r.error)}</td></tr>`
       : `<tr><td>${esc(r.symbol)}</td>
          <td class="${r.decision==='Buy'?'bull':(r.decision==='Sell'?'bear':'neutral')}">
            ${r.decision}</td>
          <td>${r.confidence}</td><td>${r.bias}</td>
          <td class="num">${fmt(r.entry)}</td><td class="num">${fmt(r.stop)}</td>
          <td class="num">${fmt(r.target1)}</td>
-         <td class="num">${r.rr ? r.rr.toFixed(2) : '—'}</td></tr>`).join('');
+         <td class="num">${r.rr ? r.rr.toFixed(2) : '—'}</td>
+         <td class="neutral">${esc(r.why || '')}</td></tr>`).join('');
 
     $('scanOut').innerHTML = `<div class="card"><h2>Scan results</h2>
       <table><thead><tr><th>Symbol</th><th>Decision</th><th>Conf</th><th>Bias</th>
       <th class="num">Entry</th><th class="num">Stop</th><th class="num">Target 1</th>
-      <th class="num">R:R</th></tr></thead><tbody>${rows}</tbody></table>
-      <div class="hint">Ranked: actionable first, then confidence, then R:R.</div>
+      <th class="num">R:R</th><th>Why</th></tr></thead><tbody>${rows}</tbody></table>
+      <div class="hint">Ranked: actionable first, then confidence, then R:R.
+       Levels are shown only where a trade qualifies.</div>
       </div>`;
     $('scanStatus').textContent = 'done ' + new Date().toLocaleTimeString();
   } catch (err) {

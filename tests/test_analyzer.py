@@ -449,3 +449,38 @@ class TestTargetSelection(unittest.TestCase):
                 self.assertGreater((a.target1 - a.entry) * sign, 0)
                 self.assertLess((a.stop - a.entry) * sign, 0)
         self.assertGreater(checked, 0, "no signals produced to verify")
+
+
+class TestScanTable(unittest.TestCase):
+    def _wait_row(self):
+        from analyzer.scanner import ScanRow
+        closes = [100 + math.sin(i / 2) * 2 for i in range(260)]
+        a = analyse(make_series(closes), instruments.resolve("GOLDM"), "daily")
+        self.assertEqual(a.decision, "WAIT")
+        return ScanRow("GOLDM", a)
+
+    def test_wait_rows_never_print_levels(self):
+        # Regression: a WAIT row showed entry/stop/target, which reads as a
+        # tradeable setup when skimming a watchlist.
+        from analyzer.scanner import render_table
+        row = self._wait_row()
+        row.analysis.entry = 123.45
+        row.analysis.stop = 120.00
+        row.analysis.target1 = 130.00
+        row.analysis.rr = 0.45
+        table = render_table([row])
+        for leaked in ("123.45", "120.00", "130.00", "0.45"):
+            self.assertNotIn(leaked, table)
+
+    def test_wait_rows_state_a_reason(self):
+        from analyzer.scanner import render_table
+        table = render_table([self._wait_row()])
+        self.assertTrue(
+            any(w in table for w in ("no clear trend", "R:R too low",
+                                     "range", "momentum against")),
+            table)
+
+    def test_failed_rows_are_counted_separately(self):
+        from analyzer.scanner import ScanRow, render_table
+        table = render_table([ScanRow("BAD", None, "boom")])
+        self.assertIn("1 failed to load", table)
