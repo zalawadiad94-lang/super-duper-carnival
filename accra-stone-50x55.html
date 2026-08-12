@@ -1,0 +1,815 @@
+<title>Accra Stone Setting-Out</title>
+<style>
+:root{
+  --board:#EDEDEA;
+  --sheet:#FFFFFF;
+  --sheet-2:#F7F7F5;
+  --ink:#16181B;
+  --ink-2:#5B6169;
+  --ink-3:#8B9199;
+  --rule:#D8D9D5;
+  --rule-2:#A9ABA6;
+  --accent:#1C5C8C;
+  --on-accent:#FFFFFF;
+  --accent-soft:#E4EDF5;
+  --warn:#A8501F;
+  --grout:#C6C7C3;
+  --tile-grey:#A4A59F;
+  --tile-white:#E9E5DC;
+  --shadow:0 1px 2px rgba(20,22,25,.06), 0 8px 28px -18px rgba(20,22,25,.28);
+
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+  --sans:"Helvetica Neue",Helvetica,Arial,system-ui,sans-serif;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --board:#0F1214;
+    --sheet:#181C1F;
+    --sheet-2:#1E2327;
+    --ink:#E8EBED;
+    --ink-2:#9CA4AB;
+    --ink-3:#6E777E;
+    --rule:#2A3034;
+    --rule-2:#454C52;
+    --accent:#74B4E2;
+    --on-accent:#0F1214;
+    --accent-soft:#15303F;
+    --warn:#DE8B57;
+    --grout:#484D50;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 28px -18px rgba(0,0,0,.9);
+  }
+}
+:root[data-theme="dark"]{
+  --board:#0F1214;
+  --sheet:#181C1F;
+  --sheet-2:#1E2327;
+  --ink:#E8EBED;
+  --ink-2:#9CA4AB;
+  --ink-3:#6E777E;
+  --rule:#2A3034;
+  --rule-2:#454C52;
+  --accent:#74B4E2;
+  --on-accent:#0F1214;
+  --accent-soft:#15303F;
+  --warn:#DE8B57;
+  --grout:#484D50;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 28px -18px rgba(0,0,0,.9);
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0;
+  background:var(--board);
+  color:var(--ink);
+  font-family:var(--sans);
+  font-size:15px;
+  line-height:1.55;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1080px;margin:0 auto;padding:28px 20px 72px;display:flex;flex-direction:column;gap:22px}
+
+/* ---- title block ---- */
+.titleblock{
+  background:var(--sheet);
+  border:1px solid var(--rule);
+  box-shadow:var(--shadow);
+  display:grid;
+  grid-template-columns:1.5fr .85fr .85fr .85fr;
+}
+.tb-cell{padding:16px 18px;border-left:1px solid var(--rule);display:flex;flex-direction:column;gap:5px;justify-content:center}
+.tb-cell:first-child{border-left:0}
+.eyebrow{font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-3)}
+.eyebrow.tight{letter-spacing:.04em}
+h1{font-size:27px;line-height:1.1;margin:0;font-weight:700;letter-spacing:-.022em;text-wrap:balance}
+.sub{color:var(--ink-2);font-size:13.5px;margin:0}
+.tb-val{font-family:var(--mono);font-size:18px;font-weight:600;letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+.tb-val small{font-size:12px;font-weight:400;color:var(--ink-2);letter-spacing:0}
+
+/* ---- panel ---- */
+.panel{background:var(--sheet);border:1px solid var(--rule);box-shadow:var(--shadow)}
+.panel-hd{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;padding:13px 18px;border-bottom:1px solid var(--rule);background:var(--sheet-2)}
+.panel-hd h2{margin:0;font-size:13px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+.panel-hd .note{font-family:var(--mono);font-size:11px;color:var(--ink-3);margin-left:auto}
+.panel-bd{padding:18px}
+
+/* ---- controls ---- */
+.controls{display:flex;gap:22px;flex-wrap:wrap;padding:14px 18px;border-bottom:1px solid var(--rule)}
+.ctl{display:flex;flex-direction:column;gap:7px}
+.ctl > span:first-child{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)}
+.seg{display:flex;border:1px solid var(--rule-2);background:var(--sheet)}
+.seg button{
+  font-family:var(--mono);font-size:11.5px;letter-spacing:.02em;
+  padding:7px 13px;border:0;border-left:1px solid var(--rule-2);
+  background:transparent;color:var(--ink-2);cursor:pointer;white-space:nowrap;
+}
+.seg button:first-child{border-left:0}
+.seg button:hover{background:var(--sheet-2);color:var(--ink)}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--on-accent);font-weight:600}
+.seg button:focus-visible{outline:2px solid var(--accent);outline-offset:2px;position:relative;z-index:1}
+.chk{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11.5px;color:var(--ink-2);cursor:pointer;align-self:flex-end;padding-bottom:8px}
+.chk input{accent-color:var(--accent);width:15px;height:15px;cursor:pointer}
+
+/* ---- drawing ---- */
+.draw{padding:20px 18px;overflow-x:auto;background:var(--sheet)}
+.draw svg{display:block;width:100%;min-width:560px;height:auto}
+.legend{
+  display:flex;gap:20px;flex-wrap:wrap;padding:13px 18px;border-top:1px solid var(--rule);
+  font-family:var(--mono);font-size:11px;color:var(--ink-2);background:var(--sheet-2);
+}
+.legend span{display:flex;align-items:center;gap:8px}
+.sw{width:22px;height:13px;border:1px solid var(--rule-2);flex:none}
+.sw.line{background:transparent;border:0;border-top:2px dashed var(--warn);height:2px;align-self:center}
+.sw.cl{background:transparent;border:0;border-top:1px solid var(--accent);height:1px;align-self:center}
+
+/* ---- swatches ---- */
+.swatches{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.swatch{border:1px solid var(--rule);overflow:hidden;background:var(--sheet-2)}
+.swatch .face{height:96px}
+.swatch .meta{padding:10px 13px;display:flex;justify-content:space-between;align-items:baseline;gap:10px;border-top:1px solid var(--rule)}
+.swatch .nm{font-size:13px;font-weight:700;letter-spacing:.03em;text-transform:uppercase}
+.swatch .fx{font-family:var(--mono);font-size:10.5px;color:var(--ink-3)}
+
+/* ---- stats ---- */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--rule)}
+.stat{background:var(--sheet);padding:14px 16px;display:flex;flex-direction:column;gap:3px}
+.stat .k{font-family:var(--mono);font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3)}
+.stat .v{font-family:var(--mono);font-size:21px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-.015em}
+.stat .d{font-family:var(--mono);font-size:11px;color:var(--ink-2)}
+.stat.hi .v{color:var(--accent)}
+
+/* ---- tables ---- */
+.tablewrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:480px}
+caption{text-align:left;font-family:var(--mono);font-size:11px;color:var(--ink-3);padding:0 0 9px}
+th,td{padding:9px 12px;text-align:left;border-bottom:1px solid var(--rule);vertical-align:baseline}
+thead th{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);font-weight:500;border-bottom:1px solid var(--rule-2)}
+td.num,th.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+tbody tr:last-child td{border-bottom:0}
+tr.total td{border-top:1px solid var(--rule-2);font-weight:700;background:var(--sheet-2)}
+.qual{color:var(--ink-3);font-size:11.5px;font-family:var(--mono)}
+.pick{color:var(--accent);font-weight:700}
+.tag{display:inline-block;font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;padding:2px 6px;border:1px solid currentColor;margin-left:7px;vertical-align:1px}
+.tag.ok{color:var(--accent)}
+
+/* ---- notes ---- */
+.notes{display:grid;grid-template-columns:repeat(auto-fit,minmax(268px,1fr));gap:1px;background:var(--rule)}
+.note-card{background:var(--sheet);padding:16px 18px;display:flex;flex-direction:column;gap:7px}
+.note-card h3{margin:0;font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase}
+.note-card p{margin:0;font-size:13px;color:var(--ink-2)}
+.note-card ul{margin:0;padding-left:17px;font-size:13px;color:var(--ink-2);display:flex;flex-direction:column;gap:5px}
+.note-card b{color:var(--ink);font-weight:600}
+
+.callout{display:flex;gap:14px;padding:15px 18px;background:var(--accent-soft);border:1px solid var(--rule);border-left:3px solid var(--accent);flex-wrap:wrap}
+.callout .ic{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);font-weight:700;white-space:nowrap;padding-top:2px}
+.callout p{margin:0;font-size:13.5px;color:var(--ink-2);flex:1;min-width:260px}
+.callout b{color:var(--ink)}
+
+footer{font-family:var(--mono);font-size:11px;color:var(--ink-3);display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;border-top:1px solid var(--rule);padding-top:14px}
+
+@media (max-width:760px){
+  .titleblock{grid-template-columns:1fr 1fr}
+  .tb-cell:first-child{grid-column:1/-1;border-bottom:1px solid var(--rule)}
+  .tb-cell:nth-child(2),.tb-cell:nth-child(4){border-left:0}
+  .swatches{grid-template-columns:1fr}
+  h1{font-size:23px}
+}
+</style>
+
+<div class="wrap">
+
+  <div class="titleblock">
+    <div class="tb-cell">
+      <span class="eyebrow">Floor setting-out plan</span>
+      <h1>Accra Grey / Accra White</h1>
+      <p class="sub">Accra Stone collection · matt · checkerboard floor to the reference layout</p>
+    </div>
+    <div class="tb-cell">
+      <span class="eyebrow">Area</span>
+      <span class="tb-val">50&prime; &times; 55&prime;</span>
+      <span class="eyebrow tight">15240 &times; 16764 mm</span>
+    </div>
+    <div class="tb-cell">
+      <span class="eyebrow">Floor area</span>
+      <span class="tb-val">2,750 <small>sq ft</small></span>
+      <span class="eyebrow tight">255.48 m&sup2;</span>
+    </div>
+    <div class="tb-cell">
+      <span class="eyebrow">Tile</span>
+      <span class="tb-val" id="tbTile">400 &times; 400</span>
+      <span class="eyebrow tight" id="tbGrid">grid</span>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-hd"><h2>Face reference</h2><span class="note">4 faces · matt</span></div>
+    <div class="panel-bd">
+      <div class="swatches">
+        <div class="swatch">
+          <div class="face" id="faceGrey"></div>
+          <div class="meta"><span class="nm">Accra Grey</span><span class="fx">dark square</span></div>
+        </div>
+        <div class="swatch">
+          <div class="face" id="faceWhite"></div>
+          <div class="meta"><span class="nm">Accra White</span><span class="fx">light square</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-hd"><h2>Setting-out plan</h2><span class="note" id="scaleNote"></span></div>
+
+    <div class="controls">
+      <label class="ctl">
+        <span>Tile size</span>
+        <span class="seg" id="segSize" role="group" aria-label="Tile size">
+          <button type="button" data-size="400" aria-pressed="true">400 &times; 400</button>
+          <button type="button" data-size="600" aria-pressed="false">600 &times; 600</button>
+          <button type="button" data-size="800" aria-pressed="false">800 &times; 800</button>
+        </span>
+      </label>
+      <label class="ctl">
+        <span>Pattern</span>
+        <span class="seg" id="segPattern" role="group" aria-label="Pattern">
+          <button type="button" data-pattern="checker" aria-pressed="true">Checkerboard</button>
+          <button type="button" data-pattern="blocks" aria-pressed="false">2&times;2 Blocks</button>
+          <button type="button" data-pattern="border" aria-pressed="false">Bordered</button>
+        </span>
+      </label>
+      <label class="ctl">
+        <span>Joint</span>
+        <span class="seg" id="segJoint" role="group" aria-label="Grout joint">
+          <button type="button" data-joint="2" aria-pressed="true">2 mm</button>
+          <button type="button" data-joint="3" aria-pressed="false">3 mm</button>
+        </span>
+      </label>
+      <label class="chk"><input type="checkbox" id="mjToggle" checked> Movement joints</label>
+    </div>
+
+    <div class="draw"><svg id="plan" role="img" aria-labelledby="planTitle"><title id="planTitle">Setting-out plan</title></svg></div>
+
+    <div class="legend">
+      <span><i class="sw" style="background:var(--tile-grey)"></i> Accra Grey</span>
+      <span><i class="sw" style="background:var(--tile-white)"></i> Accra White</span>
+      <span><i class="sw" id="swCut"></i> Cut tile (perimeter)</span>
+      <span><i class="sw line"></i> Movement joint</span>
+      <span><i class="sw cl"></i> Centreline / dimension</span>
+    </div>
+  </div>
+
+  <div class="callout">
+    <span class="ic">Setting out</span>
+    <p id="keyFinding"></p>
+  </div>
+
+  <div class="callout">
+    <span class="ic">Pattern scale</span>
+    <p id="scaleFinding"></p>
+  </div>
+
+  <div class="panel">
+    <div class="panel-hd"><h2>Setting-out data</h2><span class="note" id="soNote"></span></div>
+    <div class="stats" id="stats"></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-hd"><h2>Material take-off</h2><span class="note">10% allowance for cuts &amp; breakage</span></div>
+    <div class="panel-bd">
+      <div class="tablewrap">
+        <table>
+          <caption id="motCaption"></caption>
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th class="num">Tiles laid</th>
+              <th class="num">Order qty +10%</th>
+              <th class="num">Boxes</th>
+              <th class="num">Coverage</th>
+            </tr>
+          </thead>
+          <tbody id="motBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-hd"><h2>Sundries</h2><span class="note">indicative — confirm against product data sheets</span></div>
+    <div class="stats" id="sundries"></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-hd"><h2>Size comparison</h2><span class="note">same 50&prime; &times; 55&prime; area</span></div>
+    <div class="panel-bd">
+      <div class="tablewrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Tile</th>
+              <th class="num">Grid</th>
+              <th class="num">Tiles laid</th>
+              <th class="num">Cut tiles</th>
+              <th>Fit across 50&prime;</th>
+            </tr>
+          </thead>
+          <tbody id="cmpBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-hd"><h2>Laying notes</h2></div>
+    <div class="notes">
+      <div class="note-card">
+        <h3>Set out from the centre</h3>
+        <p id="noteCentre"></p>
+      </div>
+      <div class="note-card">
+        <h3>Colour sequence</h3>
+        <ul>
+          <li>Alternate <b>Grey / White</b> tile by tile so no two same-colour faces meet edge to edge.</li>
+          <li>Accra Stone ships in <b>4 faces</b> — draw from several boxes at once so a face never repeats along a diagonal.</li>
+          <li>Dry-lay one full 3 m &times; 3 m bay and get it approved before fixing anything.</li>
+        </ul>
+      </div>
+      <div class="note-card">
+        <h3>Joints &amp; movement</h3>
+        <ul>
+          <li><b id="noteJoint">2 mm</b> grout joint, as drawn. Widen to 3 mm if the tile is not rectified.</li>
+          <li><b>10 mm</b> perimeter gap at all walls and columns, kept free of adhesive and covered by skirting.</li>
+          <li>Movement joints at roughly <b>5 m</b> centres both ways, carried full depth through the bed to the slab.</li>
+        </ul>
+      </div>
+      <div class="note-card">
+        <h3>Bed &amp; substrate</h3>
+        <p>Fix on a cement-based tile adhesive over a level, fully cured screed. Back-butter and target better than <b>90% bed contact</b> — hollow spots under a heavy-traffic floor turn into cracked tiles. Check slab level and deflection before the first tile goes down.</p>
+      </div>
+      <div class="note-card">
+        <h3>If this is a parking deck</h3>
+        <p>The reference image is a parking floor. Confirm the tile's breaking strength and abrasion class carry vehicle wheel loads, and specify <b>R10 or better slip resistance</b> for a matt surface that will see tyre water. Bay markings can be run in Accra White as a continuous two-tile band instead of paint.</p>
+      </div>
+      <div class="note-card">
+        <h3>Alternative format</h3>
+        <p>A <b>600 &times; 1200</b> plank in the same two colours suits a linear alternating-band floor and cuts the joint count dramatically — but it will not give the square-checker look in the reference. Larger squares also read better at parking scale; the size selector above compares them.</p>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <span>Setting-out plan · Accra Grey / Accra White</span>
+    <span>Quantities indicative — verify box counts with supplier</span>
+  </footer>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var FT = 304.8;
+  var ROOM_W = 50 * FT;      // 15240 mm — drawn horizontally
+  var ROOM_L = 55 * FT;      // 16764 mm — drawn vertically
+  var AREA_M2 = (ROOM_W / 1000) * (ROOM_L / 1000);
+
+  var SIZES = {
+    400: { tile:400, pcs:6, boxM2:0.96, adhesive:4.0, label:"400 × 400" },
+    600: { tile:600, pcs:4, boxM2:1.44, adhesive:4.5, label:"600 × 600" },
+    800: { tile:800, pcs:3, boxM2:1.92, adhesive:5.0, label:"800 × 800" }
+  };
+
+  var state = { size:400, pattern:"checker", joint:2, mj:true };
+
+  /* ---------- setting out ---------- */
+  // Fit whole courses centrally and split the remainder into two equal perimeter
+  // bands. Drop a course whenever that band would come out under half a tile.
+  function setOut(room, tile, joint){
+    var mod = tile + joint;
+    var n = Math.floor(room / mod);
+    var cut = (room - (n * tile + (n + 1) * joint)) / 2;
+    if (cut < 0){ n -= 1; cut = (room - (n * tile + (n + 1) * joint)) / 2; }
+    if (cut <= joint * 1.5) return { n:n, cut:0, count:n, exact:true, naive:0 };
+    var naive = cut;
+    if (cut < tile * 0.5){
+      n -= 1;
+      cut = (room - (n * tile + (n + 1) * joint)) / 2;
+      return { n:n, cut:cut, count:n + 2, exact:false, naive:naive };
+    }
+    return { n:n, cut:cut, count:n + 2, exact:false, naive:0 };
+  }
+
+  function axis(room, tile, joint){
+    var s = setOut(room, tile, joint);
+    var cells = [], i, x;
+    if (s.exact){
+      var j = s.n > 1 ? (room - s.n * tile) / (s.n + 1) : 0;
+      x = j;
+      for (i = 0; i < s.n; i++){ cells.push({ x:x, w:tile, cut:false }); x += tile + j; }
+    } else {
+      cells.push({ x:0, w:s.cut, cut:true });
+      x = s.cut + joint;
+      for (i = 0; i < s.n; i++){ cells.push({ x:x, w:tile, cut:false }); x += tile + joint; }
+      cells.push({ x:x, w:room - x, cut:true });
+    }
+    return { cells:cells, s:s };
+  }
+
+  function colour(c, r, nc, nr){
+    if (state.pattern === "blocks") return ((Math.floor(c / 2) + Math.floor(r / 2)) % 2) ? "grey" : "white";
+    if (state.pattern === "border" && (c < 2 || r < 2 || c > nc - 3 || r > nr - 3)) return "white";
+    return ((c + r) % 2) ? "grey" : "white";
+  }
+
+  // Movement joints on the grout lines closest to the third points.
+  function mjLines(cells, room){
+    var bounds = [], i;
+    for (i = 0; i < cells.length - 1; i++) bounds.push(cells[i].x + cells[i].w + state.joint / 2);
+    var picks = [], targets = [room / 3, room * 2 / 3];
+    for (var t = 0; t < targets.length; t++){
+      var best = bounds[0], bd = Infinity;
+      for (i = 0; i < bounds.length; i++){
+        var d = Math.abs(bounds[i] - targets[t]);
+        if (d < bd){ bd = d; best = bounds[i]; }
+      }
+      if (picks.indexOf(best) === -1) picks.push(best);
+    }
+    return picks;
+  }
+
+  /* ---------- svg ---------- */
+  var NS = "http://www.w3.org/2000/svg";
+  var MONO = "ui-monospace,SFMono-Regular,Menlo,Consolas,monospace";
+  function el(name, attrs){
+    var e = document.createElementNS(NS, name), k;
+    for (k in attrs) if (Object.prototype.hasOwnProperty.call(attrs, k)) e.setAttribute(k, attrs[k]);
+    return e;
+  }
+  function txt(attrs, s){ var e = el("text", attrs); e.textContent = s; return e; }
+  function mm(v){ return Math.round(v); }
+  function num(n){ return n.toLocaleString("en-US"); }
+
+  function draw(){
+    var cfg = SIZES[state.size];
+    var ax = axis(ROOM_W, cfg.tile, state.joint);
+    var ay = axis(ROOM_L, cfg.tile, state.joint);
+    var nc = ax.cells.length, nr = ay.cells.length;
+
+    var M = 1500, DIM = 950;                       // margins in model mm
+    var svg = document.getElementById("plan");
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    svg.setAttribute("viewBox", (-M) + " " + (-M) + " " + (ROOM_W + M * 2) + " " + (ROOM_L + M * 2));
+
+    var t = el("title", { id:"planTitle" });
+    t.textContent = "Setting-out plan: " + nc + " by " + nr + " grid of " + cfg.label +
+      " mm tiles over a 50 by 55 foot floor, laid as a grey and white checkerboard";
+    svg.appendChild(t);
+
+    var defs = el("defs");
+    var hatch = el("pattern", { id:"cutHatch", width:"120", height:"120",
+      patternUnits:"userSpaceOnUse", patternTransform:"rotate(45)" });
+    hatch.appendChild(el("line", { x1:0, y1:0, x2:0, y2:120,
+      stroke:"var(--ink-3)", "stroke-width":20, "stroke-opacity":".40" }));
+    defs.appendChild(hatch);
+    svg.appendChild(defs);
+
+    // grout ground, then tiles inset on it
+    svg.appendChild(el("rect", { x:0, y:0, width:ROOM_W, height:ROOM_L, fill:"var(--grout)" }));
+
+    var g = el("g"), gh = el("g"), r, c, cx, cy;
+    for (r = 0; r < nr; r++){
+      cy = ay.cells[r];
+      for (c = 0; c < nc; c++){
+        cx = ax.cells[c];
+        g.appendChild(el("rect", {
+          x:cx.x, y:cy.x, width:cx.w, height:cy.w,
+          fill: colour(c, r, nc, nr) === "grey" ? "var(--tile-grey)" : "var(--tile-white)"
+        }));
+        if (cx.cut || cy.cut){
+          gh.appendChild(el("rect", { x:cx.x, y:cy.x, width:cx.w, height:cy.w, fill:"url(#cutHatch)" }));
+        }
+      }
+    }
+    svg.appendChild(g);
+    svg.appendChild(gh);
+
+    svg.appendChild(el("rect", { x:0, y:0, width:ROOM_W, height:ROOM_L,
+      fill:"none", stroke:"var(--ink)", "stroke-width":34 }));
+
+    // movement joints
+    var mx = mjLines(ax.cells, ROOM_W), my = mjLines(ay.cells, ROOM_L), i;
+    if (state.mj){
+      var gm = el("g", { stroke:"var(--warn)", "stroke-width":40, "stroke-dasharray":"210 130" });
+      for (i = 0; i < mx.length; i++) gm.appendChild(el("line", { x1:mx[i], y1:0, x2:mx[i], y2:ROOM_L }));
+      for (i = 0; i < my.length; i++) gm.appendChild(el("line", { x1:0, y1:my[i], x2:ROOM_W, y2:my[i] }));
+      svg.appendChild(gm);
+    }
+
+    // centrelines
+    var gc = el("g", { stroke:"var(--accent)", "stroke-width":22,
+      "stroke-dasharray":"400 120 60 120", "stroke-opacity":".85" });
+    gc.appendChild(el("line", { x1:ROOM_W / 2, y1:-500, x2:ROOM_W / 2, y2:ROOM_L + 500 }));
+    gc.appendChild(el("line", { x1:-500, y1:ROOM_L / 2, x2:ROOM_W + 500, y2:ROOM_L / 2 }));
+    svg.appendChild(gc);
+
+    // dimension lines
+    var dg = el("g", { stroke:"var(--accent)", "stroke-width":24, fill:"none" });
+    function tick(x, y, vertical){
+      return el("line", vertical ? { x1:x, y1:y - 110, x2:x, y2:y + 110 }
+                                 : { x1:x - 110, y1:y, x2:x + 110, y2:y });
+    }
+    var yd = ROOM_L + DIM;
+    dg.appendChild(el("line", { x1:0, y1:yd, x2:ROOM_W, y2:yd }));
+    dg.appendChild(tick(0, yd, true));
+    dg.appendChild(tick(ROOM_W, yd, true));
+    dg.appendChild(el("line", { x1:0, y1:ROOM_L, x2:0, y2:yd + 180, "stroke-width":14, "stroke-opacity":".5" }));
+    dg.appendChild(el("line", { x1:ROOM_W, y1:ROOM_L, x2:ROOM_W, y2:yd + 180, "stroke-width":14, "stroke-opacity":".5" }));
+
+    var xd = ROOM_W + DIM;
+    dg.appendChild(el("line", { x1:xd, y1:0, x2:xd, y2:ROOM_L }));
+    dg.appendChild(tick(xd, 0, false));
+    dg.appendChild(tick(xd, ROOM_L, false));
+    dg.appendChild(el("line", { x1:ROOM_W, y1:0, x2:xd + 180, y2:0, "stroke-width":14, "stroke-opacity":".5" }));
+    dg.appendChild(el("line", { x1:ROOM_W, y1:ROOM_L, x2:xd + 180, y2:ROOM_L, "stroke-width":14, "stroke-opacity":".5" }));
+    svg.appendChild(dg);
+
+    svg.appendChild(txt({ x:ROOM_W / 2, y:yd - 150, fill:"var(--accent)", "font-family":MONO,
+      "font-size":330, "font-weight":600, "text-anchor":"middle" }, "50'-0\"  /  15240"));
+    svg.appendChild(txt({ x:xd - 150, y:ROOM_L / 2, fill:"var(--accent)", "font-family":MONO,
+      "font-size":330, "font-weight":600, "text-anchor":"middle",
+      transform:"rotate(-90 " + (xd - 150) + " " + (ROOM_L / 2) + ")" }, "55'-0\"  /  16764"));
+
+    // run annotations
+    svg.appendChild(txt({ x:ROOM_W / 2, y:-560, fill:"var(--ink-2)", "font-family":MONO,
+      "font-size":300, "text-anchor":"middle" },
+      nc + " tiles across  ·  " + (ax.s.exact ? ax.s.n + " full, no cut"
+        : ax.s.n + " full + 2 cuts @ " + mm(ax.s.cut) + " mm")));
+    svg.appendChild(txt({ x:-600, y:ROOM_L / 2, fill:"var(--ink-2)", "font-family":MONO,
+      "font-size":300, "text-anchor":"middle",
+      transform:"rotate(-90 " + (-600) + " " + (ROOM_L / 2) + ")" },
+      nr + " tiles deep  ·  " + (ay.s.exact ? ay.s.n + " full, no cut"
+        : ay.s.n + " full + 2 cuts @ " + mm(ay.s.cut) + " mm")));
+
+    // cut-band callouts
+    function cutTxt(x, y, s, rot){
+      var a = { x:x, y:y, fill:"var(--warn)", "font-family":MONO, "font-size":265,
+        "font-weight":600, "text-anchor":"middle" };
+      if (rot) a.transform = "rotate(-90 " + x + " " + y + ")";
+      return txt(a, s);
+    }
+    if (!ax.s.exact){
+      svg.appendChild(cutTxt(ax.s.cut / 2, -150, mm(ax.s.cut)));
+      svg.appendChild(cutTxt(ROOM_W - ax.s.cut / 2, -150, mm(ax.s.cut)));
+    }
+    if (!ay.s.exact){
+      svg.appendChild(cutTxt(-170, ay.s.cut / 2, mm(ay.s.cut), true));
+      svg.appendChild(cutTxt(-170, ROOM_L - ay.s.cut / 2, mm(ay.s.cut), true));
+    }
+
+    return { cfg:cfg, ax:ax, ay:ay, nc:nc, nr:nr, mx:mx, my:my };
+  }
+
+  function tally(nc, nr){
+    var grey = 0, white = 0, r, c;
+    for (r = 0; r < nr; r++)
+      for (c = 0; c < nc; c++)
+        if (colour(c, r, nc, nr) === "grey") grey++; else white++;
+    return { grey:grey, white:white };
+  }
+
+  function fillStats(host, rows){
+    host.innerHTML = "";
+    rows.forEach(function(s){
+      var div = document.createElement("div");
+      div.className = "stat" + (s.hi ? " hi" : "");
+      div.innerHTML = '<span class="k"></span><span class="v"></span><span class="d"></span>';
+      div.children[0].textContent = s.k;
+      div.children[1].textContent = s.v;
+      div.children[2].textContent = s.d;
+      host.appendChild(div);
+    });
+  }
+
+  /* ---------- render ---------- */
+  function render(){
+    var d = draw();
+    var cfg = d.cfg, ax = d.ax, ay = d.ay, nc = d.nc, nr = d.nr;
+    var t = tally(nc, nr);
+    var laid = nc * nr;
+    var fullTiles = (ax.s.exact ? nc : nc - 2) * (ay.s.exact ? nr : nr - 2);
+    var cuts = laid - fullTiles;
+    var tileM2 = (cfg.tile / 1000) * (cfg.tile / 1000);
+    var tileFt2 = tileM2 * 10.7639;
+
+    document.getElementById("scaleNote").textContent =
+      cfg.label + " mm · " + state.joint + " mm joint · " + nc + " × " + nr + " grid";
+    document.getElementById("tbTile").textContent = cfg.label;
+    document.getElementById("tbGrid").textContent = nc + " × " + nr + " = " + num(laid) + " tiles";
+    document.getElementById("noteJoint").textContent = state.joint + " mm";
+
+    /* key finding */
+    var kf;
+    if (ax.s.naive || ay.s.naive){
+      var slivers = [];
+      if (ax.s.naive) slivers.push(mm(ax.s.naive) + " mm across the 50′ wall");
+      if (ay.s.naive) slivers.push(mm(ay.s.naive) + " mm along the 55′ run");
+      kf = "<b>The obvious grid is the wrong one.</b> Packing in as many " + cfg.label +
+        " courses as will fit leaves slivers of " + slivers.join(" and ") +
+        " — under half a tile, and the first thing that reads as an amateur floor. Dropping one course in " +
+        (slivers.length > 1 ? "each direction" : "that direction") +
+        " widens the perimeter bands to <b>" + mm(ax.s.cut) + " mm and " + mm(ay.s.cut) +
+        " mm</b>, both close to a full tile. Final grid <b>" + nc + " × " + nr + " = " +
+        num(laid) + " tiles</b>, with all cutting confined to the four perimeter bands.";
+    } else if (ax.s.exact || ay.s.exact){
+      kf = "<b>" + cfg.label + " lands on an exact module across the 50′ run.</b> " + ax.s.n +
+        " tiles at a " + state.joint + " mm joint measure the wall almost precisely, so that direction needs " +
+        "<b>no cutting at all</b> and every cut sits in the two end bands of the 55′ run at " +
+        mm(ay.s.cut) + " mm each. Final grid <b>" + nc + " × " + nr + " = " + num(laid) + " tiles</b>.";
+    } else {
+      kf = "Whole courses fit " + ax.s.n + " across and " + ay.s.n +
+        " deep, leaving perimeter bands of <b>" + mm(ax.s.cut) + " mm and " + mm(ay.s.cut) +
+        " mm</b> — both over half a tile, so no slivers anywhere on the floor. Final grid <b>" +
+        nc + " × " + nr + " = " + num(laid) + " tiles</b>.";
+    }
+    document.getElementById("keyFinding").innerHTML = kf;
+
+    /* pattern scale — how big the visual square reads against the reference image */
+    var sqMm = state.pattern === "blocks" ? cfg.tile * 2 : cfg.tile;
+    var sqFt = (sqMm / 304.8);
+    var sf;
+    if (state.pattern === "blocks"){
+      sf = "Grouping the tiles into <b>2 × 2 blocks</b> gives a visual square of <b>" + sqMm +
+        " mm (" + sqFt.toFixed(1) + " ft)</b> — roughly the scale of the squares in the reference image, " +
+        "where each square reads about a third of a car's length. This is how you get that look out of a " +
+        cfg.tile + " mm tile.";
+    } else if (cfg.tile <= 400){
+      sf = "A tile-by-tile checker at " + cfg.tile + " mm gives a <b>" + sqMm + " mm (" +
+        sqFt.toFixed(1) + " ft) square</b>. Across 2,750 sq ft that reads far busier than the reference " +
+        "image, where the squares are closer to 2.5 ft. To match it with this tile, switch to " +
+        "<b>2 × 2 Blocks</b> above — same tile, same quantities, an 800 mm visual square.";
+    } else {
+      sf = "A tile-by-tile checker at " + cfg.tile + " mm gives a <b>" + sqMm + " mm (" +
+        sqFt.toFixed(1) + " ft) square</b>, close to the scale shown in the reference image.";
+    }
+    document.getElementById("scaleFinding").innerHTML = sf;
+
+    document.getElementById("noteCentre").textContent =
+      "Snap two centrelines and work outward so the cut bands land equal on opposite walls. Lay the four tiles at " +
+      "the centre intersection first and check the diagonal before running out — at " + nc +
+      " tiles per row, a 1 mm drift per tile becomes a " + nc + " mm error by the time you reach the wall.";
+
+    /* setting-out data */
+    fillStats(document.getElementById("stats"), [
+      { k:"Grid", v:nc + " × " + nr, d:"columns × rows" },
+      { k:"Tiles laid", v:num(laid), d:num(t.grey) + " grey / " + num(t.white) + " white", hi:true },
+      { k:"Full tiles", v:num(fullTiles), d:Math.round(fullTiles / laid * 100) + "% uncut" },
+      { k:"Cut tiles", v:num(cuts), d:cuts ? "perimeter bands only" : "none required" },
+      { k:"Band across 50′", v:ax.s.exact ? "none" : mm(ax.s.cut) + " mm",
+        d:ax.s.exact ? ax.s.n + " full tiles exact"
+                     : "each end · " + Math.round(ax.s.cut / cfg.tile * 100) + "% of a tile" },
+      { k:"Band along 55′", v:ay.s.exact ? "none" : mm(ay.s.cut) + " mm",
+        d:ay.s.exact ? ay.s.n + " full tiles exact"
+                     : "each end · " + Math.round(ay.s.cut / cfg.tile * 100) + "% of a tile" }
+    ]);
+
+    document.getElementById("soNote").textContent =
+      "movement joints: " + d.mx.length + " across, " + d.my.length + " along · bays ≤ " +
+      (Math.max(ROOM_W / (d.mx.length + 1), ROOM_L / (d.my.length + 1)) / 1000).toFixed(2) + " m";
+
+    /* take-off — total is the sum of the two colour rows, not a re-round of the whole */
+    function line(name, qty){
+      var order = Math.ceil(qty * 1.10);
+      var boxes = Math.ceil(order / cfg.pcs);
+      return { name:name, qty:qty, order:order, boxes:boxes };
+    }
+    var rows = [
+      line("Accra Grey — " + cfg.label + " mm", t.grey),
+      line("Accra White — " + cfg.label + " mm", t.white)
+    ];
+    rows.push({
+      name:"Total", qty:rows[0].qty + rows[1].qty,
+      order:rows[0].order + rows[1].order, boxes:rows[0].boxes + rows[1].boxes, total:true
+    });
+    document.getElementById("motBody").innerHTML = rows.map(function(x){
+      return "<tr" + (x.total ? ' class="total"' : "") + "><td>" + x.name + "</td>" +
+        '<td class="num">' + num(x.qty) + "</td>" +
+        '<td class="num">' + num(x.order) + "</td>" +
+        '<td class="num">' + num(x.boxes) + "</td>" +
+        '<td class="num">' + num(Math.round(x.boxes * cfg.boxM2 * 10.7639)) + " sq ft</td></tr>";
+    }).join("");
+    document.getElementById("motCaption").textContent =
+      cfg.label + " mm · " + cfg.pcs + " pcs per box (" + cfg.boxM2.toFixed(2) + " m²) · " +
+      tileFt2.toFixed(2) + " sq ft per tile · floor 2,750 sq ft";
+
+    /* sundries */
+    var adhesiveKg = Math.ceil(AREA_M2 * cfg.adhesive);
+    var groutKgM2 = ((cfg.tile + cfg.tile) / (cfg.tile * cfg.tile)) * state.joint * 10 * 1.6;
+    var groutKg = Math.ceil(AREA_M2 * groutKgM2);
+    var mjLen = d.mx.length * (ROOM_L / 1000) + d.my.length * (ROOM_W / 1000);
+    var perim = 2 * ((ROOM_W + ROOM_L) / 1000);
+    fillStats(document.getElementById("sundries"), [
+      { k:"Tile adhesive", v:num(adhesiveKg) + " kg",
+        d:"@ " + cfg.adhesive.toFixed(1) + " kg/m² · " + Math.ceil(adhesiveKg / 20) + " bags of 20 kg" },
+      { k:"Grout", v:num(groutKg) + " kg",
+        d:state.joint + " mm joint · " + groutKgM2.toFixed(2) + " kg/m²" },
+      { k:"Spacers", v:num(Math.ceil(laid * 2.2 / 500) * 500) + " pcs",
+        d:state.joint + " mm cross spacers" },
+      { k:"Perimeter sealant", v:perim.toFixed(1) + " m", d:"10 mm gap at walls and columns" },
+      { k:"Movement-joint profile", v:mjLen.toFixed(1) + " m",
+        d:d.mx.length + " runs across, " + d.my.length + " along" }
+    ]);
+
+    /* comparison */
+    document.getElementById("cmpBody").innerHTML = [400, 600, 800].map(function(sz){
+      var c = SIZES[sz];
+      var a = axis(ROOM_W, c.tile, state.joint), b = axis(ROOM_L, c.tile, state.joint);
+      var lc = a.cells.length, lr = b.cells.length;
+      var full = (a.s.exact ? lc : lc - 2) * (b.s.exact ? lr : lr - 2);
+      var cc = lc * lr - full;
+      return "<tr><td" + (sz === state.size ? ' class="pick"' : "") + ">" + c.label + " mm" +
+        (a.s.exact ? '<span class="tag ok">exact</span>' : "") + "</td>" +
+        '<td class="num">' + lc + " × " + lr + "</td>" +
+        '<td class="num">' + num(lc * lr) + "</td>" +
+        '<td class="num">' + num(cc) + ' <span class="qual">' + Math.round(cc / (lc * lr) * 100) + "%</span></td>" +
+        "<td>" + (a.s.exact ? a.s.n + " full tiles, zero cutting"
+                            : a.s.n + " full + " + mm(a.s.cut) + " mm each end") + "</td></tr>";
+    }).join("");
+  }
+
+  /* ---------- controls ---------- */
+  function bindSeg(id, attr, key, cast){
+    var seg = document.getElementById(id);
+    seg.addEventListener("click", function(ev){
+      var b = ev.target.closest("button");
+      if (!b || !seg.contains(b)) return;
+      state[key] = cast ? cast(b.getAttribute("data-" + attr)) : b.getAttribute("data-" + attr);
+      Array.prototype.forEach.call(seg.querySelectorAll("button"), function(x){
+        x.setAttribute("aria-pressed", String(x === b));
+      });
+      render();
+    });
+  }
+  bindSeg("segSize", "size", "size", Number);
+  bindSeg("segPattern", "pattern", "pattern");
+  bindSeg("segJoint", "joint", "joint", Number);
+  document.getElementById("mjToggle").addEventListener("change", function(e){
+    state.mj = e.target.checked;
+    render();
+  });
+
+  /* ---------- stone faces ---------- */
+  // Matt sandstone face: broad diffuse cloud, then very soft wide sedimentary
+  // drifts, then fine grain. Kept low-contrast — these faces are subtle in matt.
+  function stone(id, base, light, dark){
+    var host = document.getElementById(id);
+    var cv = document.createElement("canvas"), W = 440, H = 130;
+    cv.width = W; cv.height = H;
+    cv.style.cssText = "width:100%;height:100%;display:block";
+    var x = cv.getContext("2d"), i, y, h;
+
+    x.fillStyle = base; x.fillRect(0, 0, W, H);
+
+    // large diffuse mottling
+    for (i = 0; i < 14; i++){
+      var cxp = Math.random() * W, cyp = Math.random() * H, rad = 40 + Math.random() * 90;
+      var rg = x.createRadialGradient(cxp, cyp, 0, cxp, cyp, rad);
+      rg.addColorStop(0, i % 2 ? light : dark);
+      rg.addColorStop(1, "rgba(0,0,0,0)");
+      x.globalAlpha = 0.16;
+      x.fillStyle = rg;
+      x.fillRect(cxp - rad, cyp - rad, rad * 2, rad * 2);
+    }
+
+    // wide, soft, irregular sedimentary drifts
+    for (i = 0; i < 9; i++){
+      y = Math.random() * H;
+      h = 14 + Math.random() * 40;
+      var lg = x.createLinearGradient(0, y - h, 0, y + h);
+      lg.addColorStop(0, "rgba(0,0,0,0)");
+      lg.addColorStop(0.5, i % 2 ? light : dark);
+      lg.addColorStop(1, "rgba(0,0,0,0)");
+      x.globalAlpha = 0.10 + Math.random() * 0.09;
+      x.fillStyle = lg;
+      x.fillRect(0, y - h, W, h * 2);
+    }
+
+    // pull the value back to the true face colour — the overlays accumulate dark
+    x.globalAlpha = 0.55;
+    x.fillStyle = base;
+    x.fillRect(0, 0, W, H);
+    x.globalAlpha = 1;
+
+    var img = x.getImageData(0, 0, W, H), dd = img.data;
+    for (i = 0; i < dd.length; i += 4){              // fine grain
+      var n = (Math.random() - 0.5) * 13;
+      dd[i] += n; dd[i + 1] += n; dd[i + 2] += n;
+    }
+    x.putImageData(img, 0, 0);
+    host.appendChild(cv);
+  }
+  stone("faceGrey",  "#ADAEA8", "rgba(226,228,224,.75)", "rgba(112,114,109,.65)");
+  stone("faceWhite", "#F1EDE5", "rgba(252,250,245,.85)", "rgba(186,178,164,.60)");
+
+  document.getElementById("swCut").style.background =
+    "repeating-linear-gradient(45deg,var(--tile-white) 0 3px,var(--ink-3) 3px 4px)";
+
+  render();
+})();
+</script>
