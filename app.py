@@ -19,7 +19,7 @@ import threading
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from analyzer import chart, feeds, instruments, scanner
+from analyzer import chart, config, feeds, instruments, scanner
 from analyzer.data import INTRADAY, load_csv
 from analyzer.engine import analyse
 from analyzer.report import EVENT_CHECKLIST
@@ -562,6 +562,16 @@ showTab('single');
 </html>"""
 
 
+def _credential_status() -> str:
+    """One line telling the user which data sources are usable right now."""
+    have = all(os.environ.get(k) for k in
+               ("ANGEL_API_KEY", "ANGEL_CLIENT_CODE", "ANGEL_PIN"))
+    if have and config.angel_totp():
+        return "Angel One credentials found — live NSE/MCX data available."
+    return ("No broker credentials — use the CSV upload source. "
+            "For live NSE/MCX data, copy .env.example to .env and fill it in.")
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="Chart analyzer web interface.")
     p.add_argument("--port", type=int, default=8000)
@@ -571,9 +581,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--open", action="store_true", help="Open a browser")
     args = p.parse_args(argv)
 
+    config.load_env_file()
     server = ThreadingHTTPServer((args.host, args.port), Handler)
     url = f"http://{args.host}:{args.port}"
     print(f"Chart Analyzer running at {url}")
+    print(_credential_status())
     print("Ctrl-C to stop.")
     if args.open:
         threading.Timer(0.6, lambda: webbrowser.open(url)).start()

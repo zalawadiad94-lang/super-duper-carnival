@@ -29,6 +29,7 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 
+from .config import angel_totp, load_env_file
 from .data import Series, load_csv
 
 USER_AGENT = "Mozilla/5.0 (compatible; chart-analyzer/1.0)"
@@ -163,14 +164,15 @@ SCRIP_MASTER = ("https://margincalculator.angelbroking.com/OpenAPI_File/files/"
 class AngelOneFeed:
     """Angel One SmartAPI — real-time NSE and MCX bars on a free API tier.
 
-    Requires your own credentials in the environment:
+    Credentials come from a `.env` file beside the app, or from real
+    environment variables:
 
-        ANGEL_API_KEY, ANGEL_CLIENT_CODE, ANGEL_PIN, ANGEL_TOTP
+        ANGEL_API_KEY, ANGEL_CLIENT_CODE, ANGEL_PIN, ANGEL_TOTP_SECRET
 
-    ANGEL_TOTP is the 6-digit code from your authenticator app, which rotates
-    every 30 seconds. For unattended use, store the TOTP *secret* instead and
-    generate codes with pyotp — that is deliberately left to you rather than
-    baked in, since it is the key to your trading account.
+    ANGEL_TOTP_SECRET is the base32 secret shown once when TOTP is enabled.
+    Fresh codes are derived from it at login, so the app keeps working
+    unattended. ANGEL_TOTP still accepts a pasted 6-digit code, but that
+    expires in 30 seconds and is only useful for a one-off check.
     """
 
     name = "angelone"
@@ -188,16 +190,31 @@ class AngelOneFeed:
 
     # -- auth ------------------------------------------------------------
     def _credentials(self) -> tuple[str, str, str, str]:
+        """Collect credentials, preferring a derived TOTP over a pasted code."""
+        load_env_file()
+
         missing = [k for k in ("ANGEL_API_KEY", "ANGEL_CLIENT_CODE",
-                               "ANGEL_PIN", "ANGEL_TOTP") if not os.environ.get(k)]
+                               "ANGEL_PIN") if not os.environ.get(k)]
+        totp = angel_totp()
+        if not totp:
+            missing.append("ANGEL_TOTP_SECRET")
+
         if missing:
             raise FeedError(
-                f"Missing environment variable(s): {', '.join(missing)}. "
-                f"Create a free SmartAPI app at smartapi.angelbroking.com and "
-                f"export the credentials before using this feed."
+                f"Missing credential(s): {', '.join(missing)}.\n\n"
+                f"Live NSE/MCX data needs a broker login. To set it up:\n"
+                f"  1. Sign in at smartapi.angelbroking.com and create an app "
+                f"(free) to get an API key.\n"
+                f"  2. Enable TOTP there and copy the SECRET it shows you — "
+                f"the long string, not the 6-digit code.\n"
+                f"  3. Copy the file '.env.example' in this folder to '.env' "
+                f"and fill in the four values.\n"
+                f"  4. Restart the app.\n\n"
+                f"Until then, choose the CSV upload source, which needs no "
+                f"credentials."
             )
         return (os.environ["ANGEL_API_KEY"], os.environ["ANGEL_CLIENT_CODE"],
-                os.environ["ANGEL_PIN"], os.environ["ANGEL_TOTP"])
+                os.environ["ANGEL_PIN"], totp)
 
     def _headers(self, api_key: str) -> dict[str, str]:
         return {
@@ -220,7 +237,9 @@ class AngelOneFeed:
         if not payload.get("status"):
             raise FeedError(
                 f"Angel One login failed: {payload.get('message', payload)}. "
-                f"A stale TOTP is the usual cause — codes expire in 30s."
+                f"Check the API key, client code and PIN. If you pasted a "
+                f"6-digit ANGEL_TOTP rather than setting ANGEL_TOTP_SECRET, "
+                f"it has almost certainly expired — codes last 30 seconds."
             )
         self._token = payload["data"]["jwtToken"]
         return self._token

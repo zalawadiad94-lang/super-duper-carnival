@@ -1,3 +1,6 @@
 __pycache__/
 *.pyc
 *.csv
+
+# Broker credentials — never commit
+.env

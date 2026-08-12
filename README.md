@@ -77,10 +77,30 @@ own credentials. Angel One's SmartAPI tier is free, Dhan and Fyers are
 comparable, and Zerodha's Kite Connect is around ₹2,000/month. Yahoo carries
 no MCX contracts at all.
 
-Angel One reads `ANGEL_API_KEY`, `ANGEL_CLIENT_CODE`, `ANGEL_PIN`, and
-`ANGEL_TOTP` from the environment and never writes them to disk. `ANGEL_TOTP`
-is the rotating 6-digit code; for unattended runs, generate it from your TOTP
-secret with `pyotp` rather than pasting a code that expires in 30 seconds.
+### Setting up live data
+
+1. Sign in at [smartapi.angelbroking.com](https://smartapi.angelbroking.com)
+   and create an app. It is free, and gives you an API key.
+2. Enable TOTP on that site. It shows a long **secret** string once — copy
+   that, not the 6-digit code.
+3. Rename `.env.example` to `.env` and fill in four values:
+
+   ```
+   ANGEL_API_KEY=your_api_key
+   ANGEL_CLIENT_CODE=your_login_id
+   ANGEL_PIN=your_trading_pin
+   ANGEL_TOTP_SECRET=the_long_secret_from_step_2
+   ```
+
+4. Restart the app. It prints whether credentials were found on startup.
+
+Fresh 6-digit codes are derived from the secret at each login (RFC 6238), so
+the app keeps working unattended. Pasting a rotating code into `ANGEL_TOTP`
+also works but expires in 30 seconds, which is only useful for a one-off
+check. Real environment variables take precedence over the file.
+
+`.env` is your trading account. It is listed in `.gitignore` — never commit
+or share it.
 
 ### On refresh rate
 

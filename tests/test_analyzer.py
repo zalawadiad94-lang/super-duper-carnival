@@ -484,3 +484,100 @@ class TestScanTable(unittest.TestCase):
         from analyzer.scanner import ScanRow, render_table
         table = render_table([ScanRow("BAD", None, "boom")])
         self.assertIn("1 failed to load", table)
+
+
+class TestCredentialsAndTotp(unittest.TestCase):
+    # RFC 6238 test vectors, SHA-1, 8 digits, secret "12345678901234567890".
+    RFC_SECRET = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
+    RFC_VECTORS = [
+        (59, "94287082"),
+        (1111111109, "07081804"),
+        (1111111111, "14050471"),
+        (1234567890, "89005924"),
+        (2000000000, "69279037"),
+        (20000000000, "65353130"),
+    ]
+
+    def test_totp_matches_rfc6238_vectors(self):
+        from analyzer.config import totp_now
+        for at, expected in self.RFC_VECTORS:
+            self.assertEqual(totp_now(self.RFC_SECRET, digits=8, at=at),
+                             expected, f"at={at}")
+
+    def test_totp_six_digits_is_the_truncated_eight(self):
+        from analyzer.config import totp_now
+        for at, expected in self.RFC_VECTORS:
+            self.assertEqual(totp_now(self.RFC_SECRET, digits=6, at=at),
+                             expected[-6:], f"at={at}")
+
+    def test_totp_tolerates_spacing_and_lowercase(self):
+        from analyzer.config import totp_now
+        spaced = "gezd gnbv gy3t qojq gezd gnbv gy3t qojq"
+        self.assertEqual(totp_now(spaced, digits=8, at=59), "94287082")
+
+    def test_totp_rejects_a_pasted_six_digit_code(self):
+        from analyzer.config import totp_now
+        with self.assertRaises(ValueError) as ctx:
+            totp_now("123456")
+        self.assertIn("not the 6-digit code", str(ctx.exception))
+
+    def test_env_file_is_parsed_and_does_not_override_real_env(self):
+        import tempfile
+        from analyzer.config import load_env_file
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, ".env")
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write("# a comment\n\n"
+                         "TEST_PLAIN=value1\n"
+                         'TEST_QUOTED="value2"\n'
+                         "TEST_EXISTING=from_file\n"
+                         "malformed line without equals\n")
+            os.environ["TEST_EXISTING"] = "from_env"
+            for k in ("TEST_PLAIN", "TEST_QUOTED"):
+                os.environ.pop(k, None)
+            try:
+                loaded = load_env_file(path)
+                self.assertEqual(os.environ["TEST_PLAIN"], "value1")
+                self.assertEqual(os.environ["TEST_QUOTED"], "value2")
+                self.assertEqual(os.environ["TEST_EXISTING"], "from_env")
+                self.assertNotIn("TEST_EXISTING", loaded)
+            finally:
+                for k in ("TEST_PLAIN", "TEST_QUOTED", "TEST_EXISTING"):
+                    os.environ.pop(k, None)
+
+    def test_missing_env_file_is_not_an_error(self):
+        from analyzer.config import load_env_file
+        self.assertEqual(load_env_file("/nonexistent/path/.env"), [])
+
+    def test_angel_error_names_the_secret_and_offers_csv(self):
+        from analyzer.feeds import AngelOneFeed, FeedError
+        saved = {k: os.environ.pop(k, None) for k in
+                 ("ANGEL_API_KEY", "ANGEL_CLIENT_CODE", "ANGEL_PIN",
+                  "ANGEL_TOTP", "ANGEL_TOTP_SECRET")}
+        try:
+            with self.assertRaises(FeedError) as ctx:
+                AngelOneFeed()._credentials()
+            msg = str(ctx.exception)
+            self.assertIn("ANGEL_TOTP_SECRET", msg)
+            self.assertIn("CSV upload", msg)
+            self.assertIn(".env", msg)
+        finally:
+            for k, v in saved.items():
+                if v is not None:
+                    os.environ[k] = v
+
+    def test_secret_beats_a_pasted_code(self):
+        from analyzer.config import angel_totp
+        saved = {k: os.environ.get(k) for k in
+                 ("ANGEL_TOTP", "ANGEL_TOTP_SECRET")}
+        try:
+            os.environ["ANGEL_TOTP"] = "000000"
+            os.environ["ANGEL_TOTP_SECRET"] = self.RFC_SECRET
+            self.assertNotEqual(angel_totp(), "000000")
+            del os.environ["ANGEL_TOTP_SECRET"]
+            self.assertEqual(angel_totp(), "000000")
+        finally:
+            for k, v in saved.items():
+                os.environ.pop(k, None)
+                if v is not None:
+                    os.environ[k] = v

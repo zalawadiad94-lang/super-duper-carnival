@@ -24,7 +24,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from analyzer import chart, feeds, instruments, scanner
+from analyzer import chart, config, feeds, instruments, scanner
 from analyzer.data import INTRADAY, load_csv
 from analyzer.engine import analyse
 from analyzer.report import render
@@ -98,6 +98,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    config.load_env_file()
 
     # --- Watchlist modes ---
     if args.scan_dir:
