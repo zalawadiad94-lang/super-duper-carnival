@@ -1,0 +1,654 @@
+//@version=6
+// ============================================================================================
+//  QUANTEDGE MULTI-MARKET PRO  -  BACKTEST STRATEGY  (Pine Script v6)
+// --------------------------------------------------------------------------------------------
+//  This is the backtestable twin of "QuantEdge Multi-Market Pro [IND]". The signal engine
+//  (trend / HTF / RSI / MACD / ADX / ATR regime / breakout trigger / quality score) is
+//  identical, so what you see on the indicator is what this strategy trades.
+//
+//  ------------------------------------------------------------------------------------------
+//  NO LOOKAHEAD BIAS - how it is enforced
+//  ------------------------------------------------------------------------------------------
+//  * `process_orders_on_close = true`  -> orders are submitted using the CLOSE of the signal
+//    bar, which is the earliest moment the signal legitimately exists.
+//  * `calc_on_every_tick = false`      -> historical and real-time evaluation match.
+//  * The single request.security() call uses `barmerge.lookahead_off` AND reads the previous
+//    (already closed) higher-timeframe bar, so no future HTF information can leak in.
+//  * All entry decisions are gated by `barstate.isconfirmed`.
+//  * Stops and targets are placed as real broker-style orders (strategy.exit), never resolved
+//    by peeking at the current bar's high/low in script logic.
+//  * Caveat that no Pine strategy can escape: when a single candle touches BOTH the stop and a
+//    target, TradingView's broker emulator has to guess the sequence. Backtest on a timeframe
+//    where your ATR stop is comfortably larger than one candle's range, or enable bar magnifier
+//    (Premium) for intrabar accuracy.
+//
+//  ------------------------------------------------------------------------------------------
+//  IMPORTANT - initial capital / commission / slippage
+//  ------------------------------------------------------------------------------------------
+//  Pine requires const values in the strategy() declaration, so those three live BOTH in the
+//  declaration below (the backtest engine's real values) and as inputs in the "0 - Backtest
+//  Engine" group, which drive position sizing and the dashboard. Keep the two in sync, or set
+//  them once in Properties -> the Properties tab always wins for the equity curve.
+// ============================================================================================
+
+strategy(title                = "QuantEdge Multi-Market Pro [STRAT]",
+         shorttitle           = "QuantEdge STR",
+         overlay              = true,
+         initial_capital      = 500000,          // mirror in "Account capital" input + Properties
+         currency             = currency.NONE,
+         default_qty_type     = strategy.fixed,
+         default_qty_value    = 1,
+         commission_type      = strategy.commission.percent,
+         commission_value     = 0.03,            // mirror in "Commission %" input + Properties
+         slippage             = 2,               // in ticks - mirror in "Slippage" input
+         pyramiding           = 0,
+         margin_long          = 100,
+         margin_short         = 100,
+         process_orders_on_close = true,
+         calc_on_every_tick   = false,
+         max_lines_count      = 500,
+         max_labels_count     = 500)
+
+// ============================================================================================
+//  INPUT GROUPS
+// ============================================================================================
+string G_BT    = "0 - Backtest Engine"
+string G_TREND = "1 - Trend Engine"
+string G_HTF   = "2 - Higher Timeframe Filter"
+string G_MOM   = "3 - Momentum (RSI / MACD)"
+string G_REG   = "4 - Market Regime (ADX / ATR / BBW)"
+string G_ENTRY = "5 - Entry Trigger"
+string G_RISK  = "6 - Stop Loss & Targets"
+string G_SIZE  = "7 - Position Sizing"
+string G_SCORE = "8 - Signal Quality Score"
+string G_GUARD = "9 - Risk Guards"
+string G_VIS   = "10 - Visuals & Dashboard"
+
+// --------------------------------------------------------------------------------------------
+//  0 - BACKTEST ENGINE
+// --------------------------------------------------------------------------------------------
+tradeMode    = input.string("Both", "Trade direction", options = ["Both", "Long only", "Short only"], group = G_BT)
+btCapital    = input.float(500000, "Account capital (mirror of initial_capital)", minval = 1, step = 1000, group = G_BT)
+btCommission = input.float(0.03, "Commission % (mirror of Properties)", minval = 0, step = 0.01, group = G_BT)
+btSlippage   = input.int(2, "Slippage ticks (mirror of Properties)", minval = 0, group = G_BT)
+useDates     = input.bool(true, "Limit backtest to a date range", group = G_BT)
+startTime    = input.time(timestamp("01 Jan 2021 00:00 +0530"), "Start date", group = G_BT)
+endTime      = input.time(timestamp("01 Jan 2030 00:00 +0530"), "End date",   group = G_BT)
+
+// --------------------------------------------------------------------------------------------
+//  1 - TREND ENGINE
+// --------------------------------------------------------------------------------------------
+emaFastLen   = input.int(20, "Fast EMA length", minval = 1, group = G_TREND)
+emaSlowLen   = input.int(50, "Slow EMA length", minval = 2, group = G_TREND)
+trendFilter  = input.string("Slow EMA", "Price must be above/below",
+                   options = ["Slow EMA", "Fast EMA", "VWAP", "HTF Slow EMA"], group = G_TREND)
+useVwap      = input.bool(true, "Enable VWAP filter (intraday only)", group = G_TREND)
+useEmaSlope  = input.bool(true, "Require slow EMA slope to agree", group = G_TREND)
+
+// --------------------------------------------------------------------------------------------
+//  2 - HIGHER TIMEFRAME FILTER
+// --------------------------------------------------------------------------------------------
+htfMode      = input.string("Manual", "HTF selection", options = ["Manual", "Auto multiple"], group = G_HTF)
+htfManual    = input.timeframe("60", "Higher timeframe", group = G_HTF)
+htfMult      = input.int(4, "Auto multiple of chart TF", minval = 2, maxval = 24, group = G_HTF)
+htfFastLen   = input.int(20, "HTF fast EMA", minval = 1, group = G_HTF)
+htfSlowLen   = input.int(50, "HTF slow EMA", minval = 2, group = G_HTF)
+htfConfirmed = input.bool(true, "Use confirmed HTF bar (non-repainting)", group = G_HTF,
+                   tooltip = "Keep this ON for honest backtests. OFF reads the in-progress HTF bar and inflates results.")
+useHtfFilter = input.bool(true, "Enforce HTF direction", group = G_HTF)
+
+// --------------------------------------------------------------------------------------------
+//  3 - MOMENTUM
+// --------------------------------------------------------------------------------------------
+rsiLen       = input.int(14, "RSI length", minval = 2, group = G_MOM)
+rsiLongMin   = input.float(55, "Long: RSI above",  minval = 1, maxval = 99, group = G_MOM)
+rsiOB        = input.float(75, "Long: RSI below (overbought block)", minval = 1, maxval = 100, group = G_MOM)
+rsiShortMax  = input.float(45, "Short: RSI below", minval = 1, maxval = 99, group = G_MOM)
+rsiOS        = input.float(25, "Short: RSI above (oversold block)",  minval = 0, maxval = 99, group = G_MOM)
+macdFast     = input.int(12, "MACD fast",   minval = 1, group = G_MOM)
+macdSlow     = input.int(26, "MACD slow",   minval = 2, group = G_MOM)
+macdSigLen   = input.int(9,  "MACD signal", minval = 1, group = G_MOM)
+macdStrict   = input.bool(true, "MACD: also require histogram expansion", group = G_MOM)
+macdZeroLine = input.bool(false, "MACD: also require line on correct side of zero", group = G_MOM)
+
+// --------------------------------------------------------------------------------------------
+//  4 - MARKET REGIME
+// --------------------------------------------------------------------------------------------
+diLen        = input.int(14, "DI length", minval = 1, group = G_REG)
+adxSmooth    = input.int(14, "ADX smoothing", minval = 1, group = G_REG)
+useAdx       = input.bool(true, "Enable ADX trend-strength filter", group = G_REG)
+adxMin       = input.float(20, "Minimum ADX", minval = 0, group = G_REG)
+atrLen       = input.int(14, "ATR length", minval = 1, group = G_REG)
+volMode      = input.string("Normal", "Volatility mode",
+                   options = ["Normal", "High volatility", "Low volatility"], group = G_REG)
+atrPctMin    = input.float(0.15, "Minimum ATR % of price", minval = 0, step = 0.05, group = G_REG)
+atrPctNormMax= input.float(3.0,  "Normal mode: max ATR %", minval = 0, step = 0.1, group = G_REG)
+atrPctHigh   = input.float(1.20, "High-vol mode: ATR % must exceed", minval = 0, step = 0.05, group = G_REG)
+atrPctLow    = input.float(0.80, "Low-vol mode: ATR % must stay below", minval = 0, step = 0.05, group = G_REG)
+atrWarnPct   = input.float(2.50, "High-volatility WARNING level (ATR %)", minval = 0, step = 0.1, group = G_REG)
+consolMode   = input.string("ADX", "Consolidation filter", options = ["Off", "ADX", "BB Width", "Both"], group = G_REG)
+bbLen        = input.int(20, "BB length", minval = 2, group = G_REG)
+bbMult       = input.float(2.0, "BB multiplier", minval = 0.1, step = 0.1, group = G_REG)
+bbwMinPct    = input.float(1.5, "Minimum BB width % of basis", minval = 0, step = 0.1, group = G_REG)
+bbwVsAvg     = input.bool(true, "BB width must also exceed its own average", group = G_REG)
+bbwAvgLen    = input.int(50, "BB width average length", minval = 2, group = G_REG)
+
+// --------------------------------------------------------------------------------------------
+//  5 - ENTRY TRIGGER
+// --------------------------------------------------------------------------------------------
+breakoutLen  = input.int(3, "Signal level = prior N-bar high/low", minval = 1, maxval = 50, group = G_ENTRY)
+useBodyCheck = input.bool(true, "Require bullish/bearish candle body", group = G_ENTRY)
+minBodyPct   = input.float(35, "Minimum body % of candle range", minval = 0, maxval = 100, group = G_ENTRY)
+cooldownBars = input.int(5, "Cooldown bars between entries", minval = 0, group = G_ENTRY)
+exitOnFlip   = input.bool(true, "Close on EMA trend reversal", group = G_ENTRY)
+useSessionEx = input.bool(false, "Force flat at session end (intraday)", group = G_ENTRY)
+exitSession  = input.session("1515-1520", "Square-off window", group = G_ENTRY,
+                   tooltip = "Indian equity/index intraday square-off is 15:15-15:20 IST. MCX runs to 23:30.")
+
+// --------------------------------------------------------------------------------------------
+//  6 - STOP LOSS & TARGETS
+// --------------------------------------------------------------------------------------------
+slMode       = input.string("ATR", "Stop-loss method", options = ["ATR", "Swing high/low", "Wider of both"], group = G_RISK)
+atrSlMult    = input.float(1.5, "ATR stop multiplier", minval = 0.1, step = 0.1, group = G_RISK)
+swingLen     = input.int(10, "Swing lookback", minval = 2, group = G_RISK)
+swingBuffer  = input.float(0.25, "Swing buffer (x ATR)", minval = 0, step = 0.05, group = G_RISK)
+exitStyle    = input.string("Fixed targets", "Exit style", options = ["Fixed targets", "Trailing stop"], group = G_RISK)
+r1Mult       = input.float(1.0, "Target 1 (R multiple)", minval = 0.1, step = 0.1, group = G_RISK)
+r2Mult       = input.float(2.0, "Target 2 (R multiple)", minval = 0.1, step = 0.1, group = G_RISK)
+r3Mult       = input.float(3.0, "Target 3 (R multiple)", minval = 0.1, step = 0.1, group = G_RISK)
+trailMult    = input.float(2.0, "Trailing stop (x ATR)", minval = 0.1, step = 0.1, group = G_RISK)
+beAfterT1    = input.bool(true, "Move stop to breakeven after Target 1", group = G_RISK)
+usePartials  = input.bool(true, "Scale out at T1 / T2 / T3", group = G_RISK)
+t1Pct        = input.float(40, "Exit % at Target 1", minval = 1, maxval = 99, group = G_RISK)
+t2Pct        = input.float(30, "Exit % at Target 2", minval = 1, maxval = 99, group = G_RISK)
+singleTarget = input.string("Target 3", "Single-exit target (when scaling is off)",
+                   options = ["Target 1", "Target 2", "Target 3"], group = G_RISK)
+
+// --------------------------------------------------------------------------------------------
+//  7 - POSITION SIZING
+// --------------------------------------------------------------------------------------------
+sizeMode     = input.string("Risk based", "Sizing mode",
+                   options = ["Risk based", "Percent of equity", "Fixed quantity"], group = G_SIZE)
+riskPct      = input.float(1.0, "Risk per trade (%)", minval = 0.01, maxval = 100, step = 0.1, group = G_SIZE)
+equityPct    = input.float(20, "Percent of equity", minval = 0.1, maxval = 100, step = 1, group = G_SIZE)
+fixedQty     = input.float(1, "Fixed quantity", minval = 0.0001, step = 1, group = G_SIZE)
+pointValue   = input.float(1.0, "Point value / contract multiplier", minval = 0.0001, step = 0.1, group = G_SIZE,
+                   tooltip = "Sizing math only. Leave at 1 for cash equity AND for real futures symbols, where TradingView already applies syminfo.pointvalue to P&L. Raise it only when you are modelling a contract the chart itself does not price.")
+lotSizeMin   = input.float(1, "Minimum lot / contract size", minval = 0.0001, step = 1, group = G_SIZE)
+lotStep      = input.float(1, "Lot size step", minval = 0.0001, step = 1, group = G_SIZE)
+
+// --------------------------------------------------------------------------------------------
+//  8 - SIGNAL QUALITY SCORE
+// --------------------------------------------------------------------------------------------
+minScore     = input.float(70, "Minimum score to trade", minval = 0, maxval = 100, step = 1, group = G_SCORE)
+wTrend       = input.float(15, "Weight: trend alignment",   minval = 0, group = G_SCORE)
+wHtf         = input.float(20, "Weight: HTF confirmation",  minval = 0, group = G_SCORE)
+wRsi         = input.float(12, "Weight: RSI",               minval = 0, group = G_SCORE)
+wMacd        = input.float(15, "Weight: MACD",              minval = 0, group = G_SCORE)
+wAdx         = input.float(15, "Weight: ADX strength",      minval = 0, group = G_SCORE)
+wVwap        = input.float(8,  "Weight: VWAP position",     minval = 0, group = G_SCORE)
+wVol         = input.float(10, "Weight: volatility regime", minval = 0, group = G_SCORE)
+wCandle      = input.float(5,  "Weight: candle confirmation", minval = 0, group = G_SCORE)
+
+// --------------------------------------------------------------------------------------------
+//  9 - RISK GUARDS
+// --------------------------------------------------------------------------------------------
+maxDailyLoss = input.float(3.0, "Max daily loss (% of day-start equity, 0 = off)", minval = 0, step = 0.5, group = G_GUARD)
+flattenOnDL  = input.bool(true, "Flatten open position when daily loss hit", group = G_GUARD)
+maxTradesDay = input.int(3, "Max entries per day (0 = unlimited)", minval = 0, group = G_GUARD)
+
+// --------------------------------------------------------------------------------------------
+//  10 - VISUALS
+// --------------------------------------------------------------------------------------------
+showEmas     = input.bool(true, "Show EMA lines", group = G_VIS)
+showLevels   = input.bool(true, "Show stop / target lines", group = G_VIS)
+showBg       = input.bool(true, "Trend background shading", group = G_VIS)
+bgAlpha      = input.int(92, "Background transparency", minval = 50, maxval = 99, group = G_VIS)
+showDash     = input.bool(true, "Show dashboard", group = G_VIS)
+
+// ============================================================================================
+//  CORE CALCULATIONS  (identical to the indicator)
+// ============================================================================================
+emaFast    = ta.ema(close, emaFastLen)
+emaSlow    = ta.ema(close, emaSlowLen)
+emaSlopeUp = emaSlow > emaSlow[1]
+emaSlopeDn = emaSlow < emaSlow[1]
+emaCrossUp = ta.crossover(emaFast, emaSlow)
+emaCrossDn = ta.crossunder(emaFast, emaSlow)
+
+rsiVal = ta.rsi(close, rsiLen)
+[macdLine, macdSignal, macdHist] = ta.macd(close, macdFast, macdSlow, macdSigLen)
+[diPlus, diMinus, adxVal]        = ta.dmi(diLen, adxSmooth)
+atrVal = ta.atr(atrLen)
+atrPct = close > 0 ? atrVal / close * 100.0 : 0.0
+
+[bbBasis, bbUpper, bbLower] = ta.bb(close, bbLen, bbMult)
+bbWidthPct = bbBasis != 0 ? (bbUpper - bbLower) / bbBasis * 100.0 : 0.0
+bbWidthAvg = ta.sma(bbWidthPct, bbwAvgLen)
+
+vwapRaw = ta.vwap(hlc3)
+vwapOk  = timeframe.isintraday and not na(vwapRaw)
+vwapVal = vwapOk ? vwapRaw : na
+
+// --- higher timeframe (only request.security in the script, lookahead_off + closed bar) -----
+f_autoTf() =>
+    secs = timeframe.in_seconds(timeframe.period) * htfMult
+    mins = secs / 60
+    mins < 1      ? str.tostring(secs) + "S" :
+      mins < 1440 ? str.tostring(math.round(mins)) :
+      mins < 10080 ? str.tostring(math.round(mins / 1440)) + "D" :
+      str.tostring(math.round(mins / 10080)) + "W"
+
+htfTf  = htfMode == "Manual" ? htfManual : f_autoTf()
+htfOff = htfConfirmed ? 1 : 0
+
+f_htfBundle() =>
+    _ef = ta.ema(close, htfFastLen)
+    _es = ta.ema(close, htfSlowLen)
+    [close[htfOff], _ef[htfOff], _es[htfOff]]
+
+[htfClose, htfEmaFast, htfEmaSlow] =
+     request.security(syminfo.tickerid, htfTf, f_htfBundle(), lookahead = barmerge.lookahead_off)
+
+htfBull  = not na(htfClose) and not na(htfEmaSlow) and htfClose > htfEmaSlow and htfEmaFast > htfEmaSlow
+htfBear  = not na(htfClose) and not na(htfEmaSlow) and htfClose < htfEmaSlow and htfEmaFast < htfEmaSlow
+htfValid = timeframe.in_seconds(htfTf) >= timeframe.in_seconds(timeframe.period)
+
+// ============================================================================================
+//  FILTERS
+// ============================================================================================
+trendRef = switch trendFilter
+    "Slow EMA"     => emaSlow
+    "Fast EMA"     => emaFast
+    "VWAP"         => vwapOk ? vwapVal : emaSlow
+    "HTF Slow EMA" => na(htfEmaSlow) ? emaSlow : htfEmaSlow
+    => emaSlow
+
+emaBull    = emaFast > emaSlow and (not useEmaSlope or emaSlopeUp)
+emaBear    = emaFast < emaSlow and (not useEmaSlope or emaSlopeDn)
+priceAbove = close > trendRef
+priceBelow = close < trendRef
+
+vwapLongOk  = not useVwap or not vwapOk or close > vwapVal
+vwapShortOk = not useVwap or not vwapOk or close < vwapVal
+htfLongOk   = not useHtfFilter or htfBull
+htfShortOk  = not useHtfFilter or htfBear
+rsiLongOk   = rsiVal > rsiLongMin  and rsiVal < rsiOB
+rsiShortOk  = rsiVal < rsiShortMax and rsiVal > rsiOS
+
+macdBull = macdLine > macdSignal and (not macdStrict or macdHist > macdHist[1]) and (not macdZeroLine or macdLine > 0)
+macdBear = macdLine < macdSignal and (not macdStrict or macdHist < macdHist[1]) and (not macdZeroLine or macdLine < 0)
+
+adxOk      = not useAdx or adxVal >= adxMin
+adxLongOk  = adxOk and (not useAdx or diPlus > diMinus)
+adxShortOk = adxOk and (not useAdx or diMinus > diPlus)
+
+volFloorOk = atrPct >= atrPctMin
+volRegimeOk = switch volMode
+    "Normal"          => volFloorOk and atrPct <= atrPctNormMax
+    "High volatility" => volFloorOk and atrPct >= atrPctHigh
+    "Low volatility"  => volFloorOk and atrPct <= atrPctLow
+    => volFloorOk
+volWarning = atrPct >= atrWarnPct
+
+adxNotFlat = adxVal >= adxMin
+bbwOk      = bbWidthPct >= bbwMinPct and (not bbwVsAvg or na(bbWidthAvg) or bbWidthPct > bbWidthAvg)
+notConsolidating = switch consolMode
+    "Off"      => true
+    "ADX"      => adxNotFlat
+    "BB Width" => bbwOk
+    "Both"     => adxNotFlat and bbwOk
+    => true
+
+sigLevelLong  = ta.highest(high, breakoutLen)[1]
+sigLevelShort = ta.lowest(low,  breakoutLen)[1]
+candleRange   = math.max(high - low, syminfo.mintick)
+bodyPct       = math.abs(close - open) / candleRange * 100.0
+bullCandle    = (not useBodyCheck) or (close > open and bodyPct >= minBodyPct)
+bearCandle    = (not useBodyCheck) or (close < open and bodyPct >= minBodyPct)
+breakUp       = not na(sigLevelLong)  and close > sigLevelLong
+breakDown     = not na(sigLevelShort) and close < sigLevelShort
+
+// ============================================================================================
+//  SIGNAL QUALITY SCORE
+// ============================================================================================
+f_score(isLong) =>
+    float num = 0.0
+    float den = 0.0
+    den := den + wTrend
+    num := num + ((isLong ? emaBull : emaBear) and (isLong ? priceAbove : priceBelow) ? wTrend : 0.0)
+    den := den + wHtf
+    num := num + ((isLong ? htfBull : htfBear) ? wHtf : 0.0)
+    den := den + wRsi
+    num := num + ((isLong ? rsiLongOk : rsiShortOk) ? wRsi : 0.0)
+    den := den + wMacd
+    macdBase = isLong ? macdLine > macdSignal : macdLine < macdSignal
+    macdFull = isLong ? macdBull : macdBear
+    num := num + (macdFull ? wMacd : macdBase ? wMacd * 0.5 : 0.0)
+    den := den + wAdx
+    adxScale = adxMin > 0 ? math.min(1.0, math.max(0.0, (adxVal - adxMin) / adxMin + 0.5)) : 1.0
+    dirOk    = isLong ? diPlus > diMinus : diMinus > diPlus
+    num := num + (adxVal >= adxMin and dirOk ? wAdx * adxScale : 0.0)
+    if useVwap and vwapOk
+        den := den + wVwap
+        num := num + ((isLong ? close > vwapVal : close < vwapVal) ? wVwap : 0.0)
+    den := den + wVol
+    num := num + (volRegimeOk and notConsolidating ? wVol : 0.0)
+    den := den + wCandle
+    num := num + ((isLong ? (bullCandle and breakUp) : (bearCandle and breakDown)) ? wCandle : 0.0)
+    den > 0 ? math.round(num / den * 100.0) : 0.0
+
+scoreLong  = f_score(true)
+scoreShort = f_score(false)
+
+// ============================================================================================
+//  CANDIDATE STOPS
+// ============================================================================================
+swingLow  = ta.lowest(low,  swingLen)[1]
+swingHigh = ta.highest(high, swingLen)[1]
+
+slAtrLong    = close - atrVal * atrSlMult
+slSwingLong  = na(swingLow)  ? slAtrLong  : swingLow  - atrVal * swingBuffer
+slAtrShort   = close + atrVal * atrSlMult
+slSwingShort = na(swingHigh) ? slAtrShort : swingHigh + atrVal * swingBuffer
+
+slCandLong = switch slMode
+    "ATR"            => slAtrLong
+    "Swing high/low" => slSwingLong
+    "Wider of both"  => math.min(slAtrLong, slSwingLong)
+    => slAtrLong
+slCandShort = switch slMode
+    "ATR"            => slAtrShort
+    "Swing high/low" => slSwingShort
+    "Wider of both"  => math.max(slAtrShort, slSwingShort)
+    => slAtrShort
+
+riskLongOk  = not na(slCandLong)  and (close - slCandLong)  > syminfo.mintick
+riskShortOk = not na(slCandShort) and (slCandShort - close) > syminfo.mintick
+
+// ============================================================================================
+//  RISK GUARDS: date window, daily loss cap, trade counter, square-off
+// ============================================================================================
+inDateRange = (not useDates) or (time >= startTime and time <= endTime)
+
+// New trading day detection. time("D") is non-repainting (no lookahead).
+newDay = nz(ta.change(time("D"))) != 0
+
+var float dayStartEquity = na
+var int   tradesToday    = 0
+if newDay
+    dayStartEquity := strategy.equity
+    tradesToday    := 0
+
+dayPnL       = strategy.equity - nz(dayStartEquity, strategy.equity)
+dailyLossCap = maxDailyLoss > 0 ? nz(dayStartEquity, btCapital) * maxDailyLoss / 100.0 : 0.0
+dailyLossHit = maxDailyLoss > 0 and dayPnL <= -dailyLossCap
+tradeCapHit  = maxTradesDay > 0 and tradesToday >= maxTradesDay
+
+// Intraday square-off window (Indian intraday products cannot be carried overnight).
+inExitWindow = useSessionEx and timeframe.isintraday and not na(time(timeframe.period, exitSession))
+
+longAllowed  = tradeMode == "Both" or tradeMode == "Long only"
+shortAllowed = tradeMode == "Both" or tradeMode == "Short only"
+
+// ============================================================================================
+//  ENTRY CONDITIONS  (same as the indicator)
+// ============================================================================================
+longSetup = emaBull and priceAbove and htfLongOk and rsiLongOk and macdBull and adxLongOk
+             and volRegimeOk and notConsolidating and bullCandle and breakUp
+             and vwapLongOk and htfValid and riskLongOk and scoreLong >= minScore
+
+shortSetup = emaBear and priceBelow and htfShortOk and rsiShortOk and macdBear and adxShortOk
+             and volRegimeOk and notConsolidating and bearCandle and breakDown
+             and vwapShortOk and htfValid and riskShortOk and scoreShort >= minScore
+
+var int lastEntryBar = na
+cooldownOk = na(lastEntryBar) or (bar_index - lastEntryBar) >= cooldownBars
+
+tradingOpen = inDateRange and barstate.isconfirmed and cooldownOk and not dailyLossHit
+               and not tradeCapHit and not inExitWindow and strategy.position_size == 0
+
+goLong  = tradingOpen and longAllowed  and longSetup
+goShort = tradingOpen and shortAllowed and shortSetup
+
+// ============================================================================================
+//  POSITION SIZING
+//  Risk amount = capital x risk% / 100 ; qty = risk amount / (|entry - stop| x point value),
+//  rounded DOWN to the lot step and rejected below the exchange minimum.
+// ============================================================================================
+f_qty(entryPx, stopPx) =>
+    float q = 0.0
+    if sizeMode == "Fixed quantity"
+        q := fixedQty
+    else if sizeMode == "Percent of equity"
+        cash = strategy.equity * equityPct / 100.0
+        q := entryPx > 0 ? cash / (entryPx * pointValue) : 0.0
+    else
+        riskAmt = strategy.equity * riskPct / 100.0
+        perUnit = math.abs(entryPx - stopPx) * pointValue
+        q := perUnit > 0 ? riskAmt / perUnit : 0.0
+    stepped = math.floor(q / lotStep) * lotStep
+    stepped < lotSizeMin ? 0.0 : stepped
+
+// ============================================================================================
+//  TRADE LEVEL STATE  (frozen at entry; only the trailing stop is allowed to move)
+// ============================================================================================
+var float sEntry = na
+var float sStop  = na
+var float sRisk  = na
+var float sT1    = na
+var float sT2    = na
+var float sT3    = na
+var float sScore = na
+var float sQty   = na
+var int   sDir   = 0            // 1 long / -1 short, latched at entry, cleared once flat
+var bool  sHitT1 = false
+var bool  sHitT2 = false
+
+f_json(ev, dir) =>
+    '{"symbol":"'      + syminfo.ticker +
+      '","exchange":"'   + syminfo.exchange +
+      '","timeframe":"'  + timeframe.period +
+      '","event":"'      + ev +
+      '","direction":"'  + dir +
+      '","entry":"'      + str.tostring(nz(sEntry), format.mintick) +
+      '","stop_loss":"'  + str.tostring(nz(sStop),  format.mintick) +
+      '","target_1":"'   + str.tostring(nz(sT1),    format.mintick) +
+      '","target_2":"'   + str.tostring(nz(sT2),    format.mintick) +
+      '","target_3":"'   + str.tostring(nz(sT3),    format.mintick) +
+      '","rr":"1:'       + str.tostring(r3Mult, "#.#") +
+      '","qty":"'        + str.tostring(nz(sQty), "#.##") +
+      '","signal_score":"' + str.tostring(nz(sScore), "#") +
+      '","price":"'      + str.tostring(close, format.mintick) +
+      '","timestamp":"'  + str.format_time(time_close, "yyyy-MM-dd HH:mm:ss", syminfo.timezone) + '"}'
+
+// --- ENTRIES ---------------------------------------------------------------------------------
+// The extra `sDir == 0` guard makes sure a previous trade's exit orders have been retired
+// before a new one is latched, even if the user sets the cooldown to zero.
+if goLong and sDir == 0
+    qty = f_qty(close, slCandLong)
+    if qty > 0
+        sEntry := close
+        sStop  := slCandLong
+        sRisk  := sEntry - sStop
+        sT1    := sEntry + sRisk * r1Mult
+        sT2    := sEntry + sRisk * r2Mult
+        sT3    := sEntry + sRisk * r3Mult
+        sScore := scoreLong
+        sQty   := qty
+        sDir   := 1
+        sHitT1 := false
+        sHitT2 := false
+        lastEntryBar := bar_index
+        tradesToday  := tradesToday + 1
+        strategy.entry("Long", strategy.long, qty = qty, alert_message = f_json("ENTRY", "LONG"))
+
+if goShort and sDir == 0
+    qty = f_qty(close, slCandShort)
+    if qty > 0
+        sEntry := close
+        sStop  := slCandShort
+        sRisk  := sStop - sEntry
+        sT1    := sEntry - sRisk * r1Mult
+        sT2    := sEntry - sRisk * r2Mult
+        sT3    := sEntry - sRisk * r3Mult
+        sScore := scoreShort
+        sQty   := qty
+        sDir   := -1
+        sHitT1 := false
+        sHitT2 := false
+        lastEntryBar := bar_index
+        tradesToday  := tradesToday + 1
+        strategy.entry("Short", strategy.short, qty = qty, alert_message = f_json("ENTRY", "SHORT"))
+
+// --- TARGET-TOUCH TRACKING --------------------------------------------------------------------
+// A limit order resting at T1/T2 fills the moment price trades through it, so a touch is a
+// faithful proxy for "that scale-out has already been taken". Never evaluated on the entry bar
+// itself (the entry filled at that bar's close, so its high/low was not reachable).
+inPos    = strategy.position_size != 0
+isLongPos  = strategy.position_size > 0
+isShortPos = strategy.position_size < 0
+afterEntry = not na(lastEntryBar) and bar_index > lastEntryBar
+
+if inPos and barstate.isconfirmed and afterEntry
+    if isLongPos
+        if high >= sT1
+            sHitT1 := true
+        if high >= sT2
+            sHitT2 := true
+    else
+        if low <= sT1
+            sHitT1 := true
+        if low <= sT2
+            sHitT2 := true
+
+// Clear the latch once the position is genuinely closed. The "afterEntry" guard matters:
+// with process_orders_on_close the entry fills at this bar's close, so position_size is still
+// 0 while the entry bar is being evaluated - clearing here would strand the trade unprotected.
+if strategy.position_size == 0 and afterEntry
+    sDir := 0
+
+// --- STOP MAINTENANCE ---------------------------------------------------------------------------
+// The stop is the ONLY level allowed to move after entry, and only ever in the safe direction.
+if inPos and barstate.isconfirmed and afterEntry
+    if exitStyle == "Trailing stop"
+        if isLongPos
+            trailCandidate = close - atrVal * trailMult
+            if beAfterT1 and sHitT1
+                trailCandidate := math.max(trailCandidate, sEntry)
+            sStop := math.max(nz(sStop, trailCandidate), trailCandidate)
+        else
+            trailCandidate = close + atrVal * trailMult
+            if beAfterT1 and sHitT1
+                trailCandidate := math.min(trailCandidate, sEntry)
+            sStop := math.min(nz(sStop, trailCandidate), trailCandidate)
+    else if beAfterT1 and sHitT1
+        // Fixed-target mode still gets a breakeven bump once Target 1 is banked.
+        sStop := isLongPos ? math.max(nz(sStop, sEntry), sEntry) : math.min(nz(sStop, sEntry), sEntry)
+
+// --- EXIT ORDERS ----------------------------------------------------------------------------------
+// Armed on the entry bar (so the position is never unprotected) and re-submitted each bar so the
+// broker emulator always holds the current stop price.
+// Scale-out legs that have already filled are NOT re-armed - re-issuing a filled TP1 would take a
+// second 40% slice out of the remaining position.
+singleTgt = singleTarget == "Target 1" ? sT1 : singleTarget == "Target 2" ? sT2 : sT3
+
+if sDir != 0 and not na(sStop)
+    entryId = sDir == 1 ? "Long" : "Short"
+    dirTxt  = sDir == 1 ? "LONG" : "SHORT"
+    if exitStyle == "Trailing stop"
+        // Trailing mode: a single stop order, the trail decides where the trade ends.
+        strategy.exit("Trail", from_entry = entryId, stop = sStop,
+                      alert_message = f_json("EXIT_TRAIL", dirTxt))
+    else if usePartials
+        if not sHitT1
+            strategy.exit("TP1", from_entry = entryId, qty_percent = t1Pct, limit = sT1, stop = sStop,
+                          alert_message = f_json("TARGET_1", dirTxt))
+        if not sHitT2
+            strategy.exit("TP2", from_entry = entryId, qty_percent = t2Pct, limit = sT2, stop = sStop,
+                          alert_message = f_json("TARGET_2", dirTxt))
+        // Final leg carries no qty_percent, so it closes whatever is left.
+        strategy.exit("TP3", from_entry = entryId, limit = sT3, stop = sStop,
+                      alert_message = f_json("TARGET_3", dirTxt))
+    else
+        strategy.exit("TP", from_entry = entryId, limit = singleTgt, stop = sStop,
+                      alert_message = f_json("EXIT", dirTxt))
+
+// --- DISCRETIONARY CLOSES ----------------------------------------------------------------------
+if inPos and barstate.isconfirmed
+    dirTxt = isLongPos ? "LONG" : "SHORT"
+    if exitOnFlip and ((isLongPos and emaCrossDn) or (isShortPos and emaCrossUp))
+        strategy.close_all(comment = "Trend flip", alert_message = f_json("EXIT_TREND_FLIP", dirTxt))
+    else if inExitWindow
+        strategy.close_all(comment = "Square-off", alert_message = f_json("EXIT_SESSION_END", dirTxt))
+    else if dailyLossHit and flattenOnDL
+        strategy.close_all(comment = "Daily loss cap", alert_message = f_json("EXIT_DAILY_LOSS", dirTxt))
+    else if useDates and time > endTime
+        strategy.close_all(comment = "Backtest window end", alert_message = f_json("EXIT_WINDOW", dirTxt))
+
+// ============================================================================================
+//  PLOTS
+// ============================================================================================
+pF = plot(showEmas ? emaFast : na, "Fast EMA", color = color.new(color.aqua, 0),   linewidth = 2)
+pS = plot(showEmas ? emaSlow : na, "Slow EMA", color = color.new(color.orange, 0), linewidth = 2)
+fill(pF, pS, color = showEmas ? color.new(emaFast > emaSlow ? color.green : color.red, 90) : na, title = "EMA ribbon")
+
+plot(showLevels and inPos ? sEntry : na, "Entry", color = color.new(color.blue, 0),   style = plot.style_linebr)
+plot(showLevels and inPos ? sStop  : na, "Stop",  color = color.new(color.red, 0),    style = plot.style_linebr)
+plot(showLevels and inPos ? sT1    : na, "T1",    color = color.new(color.green, 45), style = plot.style_linebr)
+plot(showLevels and inPos ? sT2    : na, "T2",    color = color.new(color.green, 25), style = plot.style_linebr)
+plot(showLevels and inPos ? sT3    : na, "T3",    color = color.new(color.green, 0),  style = plot.style_linebr)
+
+bgTrend = emaBull and htfBull ? color.new(color.green, bgAlpha) : emaBear and htfBear ? color.new(color.red, bgAlpha) : na
+bgcolor(showBg ? bgTrend : na, title = "Trend background")
+bgcolor(dailyLossHit ? color.new(color.red, 80) : na, title = "Daily loss lockout")
+
+// ============================================================================================
+//  DASHBOARD
+// ============================================================================================
+var table dash = table.new(position.top_right, 2, 13, border_width = 1, frame_width = 1,
+                           frame_color = color.new(color.gray, 40), border_color = color.new(color.gray, 60))
+
+f_row(r, k, v, vc) =>
+    table.cell(dash, 0, r, k, text_color = color.new(color.gray, 10), text_size = size.small, text_halign = text.align_left,  bgcolor = color.new(color.black, 80))
+    table.cell(dash, 1, r, v, text_color = vc,                        text_size = size.small, text_halign = text.align_right, bgcolor = color.new(color.black, 80))
+
+if showDash and barstate.islast
+    trendTxt  = emaBull ? "BULLISH" : emaBear ? "BEARISH" : "NEUTRAL"
+    trendCol  = emaBull ? color.lime : emaBear ? color.red : color.gray
+    htfTxt    = htfBull ? "BULLISH" : htfBear ? "BEARISH" : "NEUTRAL"
+    htfCol    = htfBull ? color.lime : htfBear ? color.red : color.gray
+    statusTxt = strategy.position_size > 0 ? "LONG OPEN" : strategy.position_size < 0 ? "SHORT OPEN" : "FLAT"
+    statusCol = strategy.position_size > 0 ? color.lime : strategy.position_size < 0 ? color.red : color.gray
+    scoreShow = inPos ? nz(sScore) : math.max(scoreLong, scoreShort)
+    scoreCol  = scoreShow >= minScore ? color.lime : color.gray
+    guardTxt  = dailyLossHit ? "DAILY LOSS STOP" : tradeCapHit ? "TRADE CAP" : inExitWindow ? "SQUARE-OFF" : "ACTIVE"
+    guardCol  = guardTxt == "ACTIVE" ? color.lime : color.orange
+
+    table.cell(dash, 0, 0, "QUANTEDGE STR", text_color = color.white, text_size = size.small, bgcolor = color.new(color.blue, 40))
+    table.cell(dash, 1, 0, timeframe.period + " / " + htfTf, text_color = color.white, text_size = size.small, bgcolor = color.new(color.blue, 40))
+    f_row(1,  "Trend",      trendTxt, trendCol)
+    f_row(2,  "HTF trend",  htfValid ? htfTxt : "TF ERROR", htfValid ? htfCol : color.orange)
+    f_row(3,  "RSI",        str.tostring(rsiVal, "#.#"), rsiVal > 50 ? color.lime : color.red)
+    f_row(4,  "ADX",        str.tostring(adxVal, "#.#"), adxVal >= adxMin ? color.lime : color.gray)
+    f_row(5,  "ATR (" + str.tostring(atrPct, "#.##") + "%)", str.tostring(atrVal, format.mintick), volWarning ? color.orange : color.silver)
+    f_row(6,  "Score",      str.tostring(scoreShow, "#") + " / " + str.tostring(minScore, "#"), scoreCol)
+    f_row(7,  "Status",     statusTxt, statusCol)
+    f_row(8,  "Qty",        str.tostring(math.abs(strategy.position_size), "#.##"), color.aqua)
+    f_row(9,  "Entry / SL", inPos ? str.tostring(sEntry, format.mintick) + " / " + str.tostring(sStop, format.mintick) : "-", color.silver)
+    f_row(10, "Day P&L",    str.tostring(dayPnL, "#.#") + " (" + str.tostring(tradesToday, "#") + " trades)", dayPnL >= 0 ? color.lime : color.red)
+    f_row(11, "Guards",     guardTxt, guardCol)
+    f_row(12, "Costs",      str.tostring(btCommission, "#.##") + "% + " + str.tostring(btSlippage, "#") + " ticks", color.silver)
+
+// ============================================================================================
+//  ALERTS
+//  Order-fill alerts come from the alert_message arguments above: create one alert on the
+//  strategy and choose "Order fills only" (or "alert() function calls only" for the events
+//  below). Both deliver the same JSON schema as the indicator.
+// ============================================================================================
+alertcondition(goLong,  "Strategy Long Entry",  '{"symbol":"{{ticker}}","timeframe":"{{interval}}","event":"ENTRY","direction":"LONG","entry":"{{close}}","time":"{{timenow}}"}')
+alertcondition(goShort, "Strategy Short Entry", '{"symbol":"{{ticker}}","timeframe":"{{interval}}","event":"ENTRY","direction":"SHORT","entry":"{{close}}","time":"{{timenow}}"}')
+alertcondition(barstate.isconfirmed and volWarning and not volWarning[1], "High Volatility Warning",
+     '{"symbol":"{{ticker}}","timeframe":"{{interval}}","event":"HIGH_VOLATILITY","price":"{{close}}","time":"{{timenow}}"}')
+alertcondition(barstate.isconfirmed and (emaCrossUp or emaCrossDn), "Trend Reversal",
+     '{"symbol":"{{ticker}}","timeframe":"{{interval}}","event":"TREND_REVERSAL","price":"{{close}}","time":"{{timenow}}"}')
