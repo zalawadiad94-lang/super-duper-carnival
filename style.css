@@ -1,0 +1,122 @@
+:root {
+  color-scheme: dark;
+  --bg: #0e0f14;
+  --panel-bg: #131722;
+  --border: #23262f;
+  --text: #d1d4dc;
+  --muted: #787b86;
+  --accent: #2962ff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+.app-header {
+  padding: 20px 24px 8px;
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: 1.6rem;
+  letter-spacing: -0.02em;
+}
+
+.app-header .subtitle {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.ticker-tape {
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  margin: 12px 0;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  grid-template-rows: 560px 420px;
+  gap: 16px;
+  padding: 0 24px 24px;
+}
+
+.chart-panel {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.overview-panel {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
+
+.news-panel {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.panel {
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.panel h2 {
+  margin: 0 0 10px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.panel .tradingview-widget-container {
+  flex: 1;
+  min-height: 0;
+}
+
+#tv_chart {
+  height: 100%;
+  width: 100%;
+}
+
+.app-footer {
+  padding: 8px 24px 24px;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+@media (max-width: 900px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto;
+  }
+  .chart-panel,
+  .overview-panel,
+  .news-panel {
+    grid-column: 1;
+    grid-row: auto;
+  }
+  .chart-panel {
+    height: 500px;
+  }
+  .overview-panel {
+    height: 500px;
+  }
+  .news-panel {
+    height: 400px;
+  }
+}
