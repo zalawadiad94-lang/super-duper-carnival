@@ -83,6 +83,12 @@ body {
   letter-spacing: 0.04em;
 }
 
+.panel-hint {
+  margin: -6px 0 10px;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
 .panel .tradingview-widget-container {
   flex: 1;
   min-height: 0;

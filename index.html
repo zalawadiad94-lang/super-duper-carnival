@@ -8,24 +8,22 @@
 </head>
 <body>
   <header class="app-header">
-    <h1>Market Pulse</h1>
-    <p class="subtitle">Live quotes, charts &amp; news powered by TradingView</p>
+    <h1>My Watchlist</h1>
+    <p class="subtitle">Live MCX &amp; NSE rates and charts, powered by TradingView</p>
   </header>
 
-  <!-- Scrolling ticker tape -->
+  <!-- Scrolling ticker tape: your exact watchlist -->
   <div class="tradingview-widget-container ticker-tape">
     <div class="tradingview-widget-container__widget"></div>
     <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-ticker-tape.js" async>
     {
       "symbols": [
-        { "proName": "FOREXCOM:SPXUSD", "title": "S&P 500" },
-        { "proName": "FOREXCOM:NSXUSD", "title": "Nasdaq 100" },
-        { "proName": "FOREXCOM:DJI", "title": "Dow 30" },
-        { "proName": "FX_IDC:EURUSD", "title": "EUR/USD" },
-        { "proName": "BITSTAMP:BTCUSD", "title": "Bitcoin" },
-        { "proName": "BITSTAMP:ETHUSD", "title": "Ethereum" },
-        { "proName": "NASDAQ:AAPL", "title": "Apple" },
-        { "proName": "NASDAQ:NVDA", "title": "Nvidia" }
+        { "proName": "MCX:SILVER1!", "title": "SILVER SEP" },
+        { "proName": "NSE:NIFTY1!", "title": "NIFTY FUT" },
+        { "proName": "NSE:BANKNIFTY1!", "title": "BANKNIFTY FUT" },
+        { "proName": "MCX:GOLD1!", "title": "GOLD OCT" },
+        { "proName": "MCX:CRUDEOIL1!", "title": "CRUDE AUG" },
+        { "proName": "MCX:COPPER1!", "title": "COPPER AUG" }
       ],
       "showSymbolLogo": true,
       "isTransparent": false,
@@ -46,9 +44,9 @@
         <script type="text/javascript">
           new TradingView.widget({
             "autosize": true,
-            "symbol": "NASDAQ:AAPL",
+            "symbol": "MCX:GOLD1!",
             "interval": "15",
-            "timezone": "Etc/UTC",
+            "timezone": "Asia/Kolkata",
             "theme": "dark",
             "style": "1",
             "locale": "en",
@@ -57,64 +55,64 @@
             "allow_symbol_change": true,
             "hide_side_toolbar": false,
             "withdateranges": true,
+            "watchlist": [
+              "MCX:SILVER1!",
+              "NSE:NIFTY1!",
+              "NSE:BANKNIFTY1!",
+              "MCX:GOLD1!",
+              "MCX:CRUDEOIL1!",
+              "MCX:COPPER1!"
+            ],
             "container_id": "tv_chart"
           });
         </script>
       </div>
     </section>
 
-    <!-- Market overview sidebar -->
+    <!-- Live rates for your exact watchlist -->
     <aside class="panel overview-panel">
-      <h2>Market Overview</h2>
+      <h2>Quotes</h2>
       <div class="tradingview-widget-container">
         <div class="tradingview-widget-container__widget"></div>
-        <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-market-overview.js" async>
+        <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-symbol-overview.js" async>
         {
-          "colorTheme": "dark",
-          "dateRange": "12M",
-          "showChart": true,
-          "locale": "en",
+          "symbols": [
+            ["SILVER SEP|MCX:SILVER1!"],
+            ["NIFTY FUT|NSE:NIFTY1!"],
+            ["BANKNIFTY FUT|NSE:BANKNIFTY1!"],
+            ["GOLD OCT|MCX:GOLD1!"],
+            ["CRUDE AUG|MCX:CRUDEOIL1!"],
+            ["COPPER AUG|MCX:COPPER1!"]
+          ],
+          "chartOnly": false,
           "width": "100%",
           "height": "100%",
-          "largeChartUrl": "",
-          "isTransparent": false,
-          "showSymbolLogo": true,
-          "showFloatingTooltip": false,
-          "plotLineColorGrowing": "rgba(41, 98, 255, 1)",
-          "plotLineColorFalling": "rgba(41, 98, 255, 1)",
-          "gridLineColor": "rgba(240, 243, 250, 0)",
-          "scaleFontColor": "rgba(219, 219, 219, 1)",
-          "belowLineFillColorGrowing": "rgba(41, 98, 255, 0.12)",
-          "belowLineFillColorFalling": "rgba(41, 98, 255, 0.12)",
-          "belowLineFillColorGrowingBottom": "rgba(41, 98, 255, 0)",
-          "belowLineFillColorFallingBottom": "rgba(41, 98, 255, 0)",
-          "symbolActiveColor": "rgba(41, 98, 255, 0.12)",
-          "tabs": [
-            {
-              "title": "Indices",
-              "symbols": [
-                { "s": "FOREXCOM:SPXUSD", "d": "S&P 500" },
-                { "s": "FOREXCOM:NSXUSD", "d": "Nasdaq 100" },
-                { "s": "FOREXCOM:DJI", "d": "Dow 30" },
-                { "s": "INDEX:NKY", "d": "Nikkei 225" }
-              ]
-            },
-            {
-              "title": "Forex",
-              "symbols": [
-                { "s": "FX_IDC:EURUSD", "d": "EUR/USD" },
-                { "s": "FX_IDC:GBPUSD", "d": "GBP/USD" },
-                { "s": "FX_IDC:USDJPY", "d": "USD/JPY" }
-              ]
-            },
-            {
-              "title": "Crypto",
-              "symbols": [
-                { "s": "BITSTAMP:BTCUSD", "d": "Bitcoin" },
-                { "s": "BITSTAMP:ETHUSD", "d": "Ethereum" },
-                { "s": "COINBASE:SOLUSD", "d": "Solana" }
-              ]
-            }
+          "locale": "en",
+          "colorTheme": "dark",
+          "autosize": true,
+          "showVolume": false,
+          "showMA": false,
+          "hideDateRanges": false,
+          "hideMarketStatus": false,
+          "hideSymbolLogo": false,
+          "scalePosition": "right",
+          "scaleMode": "Normal",
+          "fontFamily": "-apple-system, BlinkMacSystemFont, Trebuchet MS, Roboto, Ubuntu, sans-serif",
+          "fontSize": "10",
+          "noTimeScale": false,
+          "valuesTracking": "1",
+          "changeMode": "price-and-percent",
+          "chartType": "area",
+          "headerFontSize": "medium",
+          "lineWidth": 2,
+          "lineType": 0,
+          "dateRanges": [
+            "1d|1",
+            "1m|30",
+            "3m|60",
+            "12m|1D",
+            "60m|1W",
+            "all|1M"
           ]
         }
         </script>
@@ -124,6 +122,7 @@
     <!-- Live news / market pulse feed -->
     <section class="panel news-panel">
       <h2>News &amp; Market Pulse</h2>
+      <p class="panel-hint">General market news feed — TradingView doesn't offer a free India-commodities-only filter.</p>
       <div class="tradingview-widget-container">
         <div class="tradingview-widget-container__widget"></div>
         <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-timeline.js" async>
@@ -142,7 +141,17 @@
   </main>
 
   <footer class="app-footer">
-    <p>Data provided live by TradingView widgets — no API key required. Change the chart symbol using the search box on the chart panel.</p>
+    <p>
+      Data provided live by TradingView widgets — no API key required. Click any
+      row in the chart's watchlist panel to switch symbols, or use the search box.
+      Continuous futures contracts (the <code>1!</code> symbols) are used since
+      TradingView doesn't track your broker's exact monthly contract codes
+      (SEP/OCT/AUG) — prices track the same underlying market. If MCX/NSE data
+      appears delayed rather than tick-live, that's TradingView's free-tier data
+      license for Indian exchanges, not a bug here — true real-time bid/ask
+      matching your broker exactly would require that broker's own market-data
+      API, which isn't available to this dashboard.
+    </p>
   </footer>
 </body>
 </html>
