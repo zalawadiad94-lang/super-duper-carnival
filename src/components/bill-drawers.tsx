@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { ChevronLeft, PackagePlus, Send, X } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { DrawerFrame } from "@/components/drawers";
 import { ItemForm, ItemPicker } from "@/components/items";
@@ -104,6 +105,7 @@ export function BillDrawer() {
   const parties = useLedger((state) => state.parties);
   const sites = useLedger((state) => state.sites);
   const addBill = useLedger((state) => state.addBill);
+  const navigate = useNavigate();
   const updateBill = useLedger((state) => state.updateBill);
   const addItem = useLedger((state) => state.addItem);
   const items = useLedger((state) => state.items);
@@ -255,8 +257,13 @@ export function BillDrawer() {
       updateBill(existing.id, input);
       toast.success(`${billLabel(input)} saved`);
     } else {
-      addBill(input, paid);
-      toast.success(`${billLabel(input)} added`);
+      const id = addBill(input, paid);
+      toast.success(`${billLabel(input)} added`, {
+        action: {
+          label: "Send JPG",
+          onClick: () => void navigate({ to: "/bill/$billId", params: { billId: id }, search: { send: true } }),
+        },
+      });
     }
     close();
   }

@@ -205,20 +205,28 @@ public class MainActivity extends Activity {
                 public void run() {
                     if (whatsapp) {
                         for (String pkg : new String[] {"com.whatsapp", "com.whatsapp.w4b"}) {
-                            Intent direct = imageIntent(uri, caption);
+                            // Image only (no text): WhatsApp attaches the picture to the chat.
+                            Intent direct = imageIntent(uri, null);
                             direct.setPackage(pkg);
                             if (phone != null && !phone.isEmpty()) {
                                 direct.putExtra("jid", phone + "@s.whatsapp.net");
                             }
                             try {
+                                grantUriPermission(pkg, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                            } catch (RuntimeException ignored) {
+                                // Not installed / not visible; the intent flag still grants access.
+                            }
+                            try {
                                 startActivity(direct);
                                 return;
-                            } catch (ActivityNotFoundException ignored) {
+                            } catch (ActivityNotFoundException | SecurityException ignored) {
                                 // Try the next WhatsApp, then the share sheet.
                             }
                         }
                     }
-                    startActivity(Intent.createChooser(imageIntent(uri, caption), "Send purchase order"));
+                    Intent chooser = Intent.createChooser(imageIntent(uri, caption), "Send picture");
+                    chooser.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                    startActivity(chooser);
                 }
             });
         }

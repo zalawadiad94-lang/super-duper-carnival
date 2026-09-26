@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
-import { ChevronLeft, MessageCircle, Pencil, Send, Trash2 } from "lucide-react";
+import { ChevronLeft, ImageIcon, Pencil, Send, Trash2 } from "lucide-react";
+import { BillImageDrawer } from "@/components/bill-image-drawer";
 import { PurchaseOrderDrawer } from "@/components/purchase-order";
 import { toast } from "sonner";
 import { Money } from "@/components/money";
@@ -15,40 +16,17 @@ import {
   formatQty,
   lineTotal,
   possessive,
-  type Bill,
 } from "@/lib/bills";
 import { cn } from "@/lib/cn";
 import { formatDay, formatINR } from "@/lib/format";
 import { useLedger, useUi } from "@/lib/store";
 
-export const Route = createFileRoute("/bill/$billId")({ component: BillPage });
-
-function whatsAppHref(phone: string, text: string) {
-  const digits = phone.replace(/\D/g, "");
-  const num = digits.length === 10 ? `91${digits}` : digits;
-  if (num.length < 10) return null;
-  return `https://wa.me/${num}?text=${encodeURIComponent(text)}`;
-}
-
-function shareText(business: string, name: string, bill: Bill) {
-  const due = billDue(bill);
-  const lines = [
-    `${name},`,
-    "",
-    `${billLabel(bill)} from ${business}`,
-    `Date: ${formatDay(bill.date)}`,
-    bill.note ? `Details: ${bill.note}` : null,
-    ...bill.lines.map(
-      (line) => `• ${line.name}: ${formatQty(line.qty, line.unit)} × ${formatINR(line.rate)} = ${formatINR(lineTotal(line))}`,
-    ),
-    `Amount: ${formatINR(bill.amount)}`,
-    billPaid(bill) > 0 ? `Paid: ${formatINR(billPaid(bill))}` : null,
-    due > 0 ? `Balance due: ${formatINR(due)}` : "Fully paid. Thank you.",
-    "",
-    `— ${business}`,
-  ];
-  return lines.filter((line) => line !== null).join("\n");
-}
+export const Route = createFileRoute("/bill/$billId")({
+  // ?send=1 opens the "send as JPG" drawer straight away (from the Add bill toast).
+  validateSearch: (search: Record<string, unknown>): { send?: boolean } =>
+    search.send === true || search.send === "1" || search.send === 1 ? { send: true } : {},
+  component: BillPage,
+});
 
 function BillPage() {
   const { billId } = Route.useParams();
@@ -56,7 +34,6 @@ function BillPage() {
   const bills = useLedger((state) => state.bills);
   const parties = useLedger((state) => state.parties);
   const sites = useLedger((state) => state.sites);
-  const businessName = useLedger((state) => state.businessName);
   const deleteBill = useLedger((state) => state.deleteBill);
   const deleteBillPayment = useLedger((state) => state.deleteBillPayment);
   const openBillForm = useUi((state) => state.openBillForm);
@@ -64,6 +41,8 @@ function BillPage() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [removePayment, setRemovePayment] = useState<string | null>(null);
   const [orderOpen, setOrderOpen] = useState(false);
+  const { send } = Route.useSearch();
+  const [imageOpen, setImageOpen] = useState(Boolean(send));
   const bill = bills.find((item) => item.id === billId);
 
   if (!bill) {
@@ -84,7 +63,6 @@ function BillPage() {
   const paid = billPaid(bill);
   const due = billDue(bill);
   const meta = BILL_META[bill.type];
-  const wa = party?.phone ? whatsAppHref(party.phone, shareText(businessName, name, bill)) : null;
   const payments = [...bill.payments].sort((a, b) => (a.date < b.date ? 1 : -1));
 
   return (
@@ -174,29 +152,10 @@ function BillPage() {
             {bill.type === "sale" ? "Payment received" : "Payment made"}
           </Button>
         ) : null}
-        {wa ? (
-          <a
-            href={wa}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-brass-soft px-4 text-sm font-semibold text-brass"
-          >
-            <MessageCircle className="size-4" aria-hidden="true" />
-            Send on WhatsApp
-          </a>
-        ) : (
-          <Button
-            variant="soft"
-            onClick={() => {
-              void navigator.clipboard?.writeText(shareText(businessName, name, bill)).then(
-                () => toast.success("Bill copied"),
-                () => toast.error("Couldn't copy"),
-              );
-            }}
-          >
-            Copy bill
-          </Button>
-        )}
+        <Button variant="soft" onClick={() => setImageOpen(true)}>
+          <ImageIcon className="size-4" aria-hidden="true" />
+          Send as JPG
+        </Button>
       </div>
 
       {bill.type === "purchase" && bill.lines.length ? (
@@ -234,6 +193,7 @@ function BillPage() {
         Delete bill
       </Button>
 
+      <BillImageDrawer bill={bill} open={imageOpen} onOpenChange={setImageOpen} />
       <PurchaseOrderDrawer
         open={orderOpen}
         onOpenChange={setOrderOpen}
