@@ -3,8 +3,10 @@ package com.sitekhata.app;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.Intent;
+import android.database.Cursor;
 import android.net.Uri;
 import android.os.Bundle;
+import android.provider.ContactsContract;
 import android.webkit.JavascriptInterface;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
@@ -19,6 +21,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
+import org.json.JSONObject;
 
 /**
  * Hosts the Sitekhata web app (built into assets/www by apk/vite.config.ts) in a
@@ -30,6 +33,7 @@ public class MainActivity extends Activity {
     private static final String START_URL = "https://" + HOST + "/";
     private static final int REQUEST_SAVE_FILE = 1;
     private static final int REQUEST_PICK_FILE = 2;
+    private static final int REQUEST_PICK_CONTACT = 3;
 
     private WebView webView;
     private ValueCallback<Uri[]> pendingFilePick;
@@ -78,7 +82,9 @@ public class MainActivity extends Activity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == REQUEST_PICK_FILE) {
+        if (requestCode == REQUEST_PICK_CONTACT) {
+            deliverContact(resultCode == RESULT_OK && data != null ? data.getData() : null);
+        } else if (requestCode == REQUEST_PICK_FILE) {
             if (pendingFilePick != null) {
                 pendingFilePick.onReceiveValue(
                         WebChromeClient.FileChooserParams.parseResult(resultCode, data));
@@ -99,8 +105,50 @@ public class MainActivity extends Activity {
         }
     }
 
-    /** Called from apk/android-bridge.ts when the web app downloads a file. */
+    /** Reads the picked phone entry and hands it to src/lib/contacts.ts. */
+    private void deliverContact(Uri uri) {
+        String json = "null";
+        if (uri != null) {
+            String[] columns = {
+                ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                ContactsContract.CommonDataKinds.Phone.NUMBER,
+            };
+            try (Cursor cursor = getContentResolver().query(uri, columns, null, null, null)) {
+                if (cursor != null && cursor.moveToFirst()) {
+                    JSONObject picked = new JSONObject();
+                    picked.put("name", cursor.isNull(0) ? "" : cursor.getString(0));
+                    picked.put("phone", cursor.isNull(1) ? "" : cursor.getString(1));
+                    json = picked.toString();
+                }
+            } catch (Exception e) {
+                Toast.makeText(this, "Couldn't read that contact", Toast.LENGTH_SHORT).show();
+            }
+        }
+        webView.evaluateJavascript(
+                "window.__sitekhataContactPicked && window.__sitekhataContactPicked(" + json + ")", null);
+    }
+
+    /** Methods the web app calls as window.SitekhataAndroid.*. */
     private class Bridge {
+        /** Opens the system contact picker; no contacts permission needed. */
+        @JavascriptInterface
+        public void pickContact() {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    Intent intent = new Intent(
+                            Intent.ACTION_PICK, ContactsContract.CommonDataKinds.Phone.CONTENT_URI);
+                    try {
+                        startActivityForResult(intent, REQUEST_PICK_CONTACT);
+                    } catch (RuntimeException e) {
+                        Toast.makeText(MainActivity.this, "No contacts app found", Toast.LENGTH_SHORT).show();
+                        deliverContact(null);
+                    }
+                }
+            });
+        }
+
+        /** Called from apk/android-bridge.ts when the web app downloads a file. */
         @JavascriptInterface
         public void saveFile(final String fileName, final String mimeType, final String contents) {
             runOnUiThread(new Runnable() {

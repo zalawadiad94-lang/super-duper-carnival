@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Drawer } from "vaul";
 import { toast } from "sonner";
-import { Download, Upload } from "lucide-react";
+import { Contact, Download, Upload } from "lucide-react";
 import { Button, ConfirmDialog, Field, SelectInput, TextArea, TextInput } from "@/components/ui";
+import { canPickContact, pickContact } from "@/lib/contacts";
 import { todayISO, parseAmount } from "@/lib/format";
 import {
   KIND_META,
@@ -331,6 +332,11 @@ export function PartyDrawer() {
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [contactsAvailable, setContactsAvailable] = useState(false);
+
+  useEffect(() => {
+    setContactsAvailable(canPickContact());
+  }, []);
 
   useEffect(() => {
     if (!form.open) return;
@@ -356,6 +362,18 @@ export function PartyDrawer() {
       toast.success(`${name.trim()} added`);
     }
     close();
+  }
+
+  async function fromContacts() {
+    try {
+      const picked = await pickContact();
+      if (!picked) return;
+      if (picked.name) setName(picked.name);
+      if (picked.phone) setPhone(picked.phone);
+      setError(null);
+    } catch {
+      toast.error("Couldn't open your contacts.");
+    }
   }
 
   const entryCount = existing ? entries.filter((entry) => entry.partyId === existing.id).length : 0;
@@ -384,6 +402,12 @@ export function PartyDrawer() {
               </button>
             ))}
           </div>
+          {!existing && contactsAvailable ? (
+            <Button variant="soft" className="w-full" onClick={fromContacts}>
+              <Contact className="size-4" aria-hidden="true" />
+              Pick from contacts
+            </Button>
+          ) : null}
           <Field label="Name">
             <TextInput value={name} onChange={(event) => setName(event.target.value)} placeholder="Mehta Developers" autoFocus />
           </Field>

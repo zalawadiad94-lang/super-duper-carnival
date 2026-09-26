@@ -6,7 +6,10 @@
  * present, intercept those clicks, read the blob, and hand the text to Android,
  * which opens the system "Save to…" picker.
  */
-type NativeBridge = { saveFile: (fileName: string, mimeType: string, contents: string) => void };
+type NativeBridge = {
+  saveFile: (fileName: string, mimeType: string, contents: string) => void;
+  pickContact?: () => void;
+};
 
 declare global {
   interface Window {
