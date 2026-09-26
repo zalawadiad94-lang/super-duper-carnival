@@ -4,17 +4,26 @@
   --font-sans: "Outfit", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Fraunces", "Iowan Old Style", Georgia, serif;
 
-  --color-bg: #f3efe7;
-  --color-surface: #fffdf8;
-  --color-ink: #1c2430;
-  --color-muted: #5e574e;
-  --color-line: #e4d9cc;
-  --color-brass: #8d4e12;
-  --color-brass-soft: #f8ecd9;
-  --color-get: #176b45;
-  --color-get-soft: #e6f4ec;
-  --color-give: #9f2d24;
-  --color-give-soft: #fdeceb;
+  /* "brass" is the accent token name; it is a vivid blue now. */
+  --color-bg: #eef2fa;
+  --color-surface: #ffffff;
+  --color-ink: #0f1d45;
+  --color-muted: #5a6788;
+  --color-line: #dce3f1;
+  --color-brass: #2455e6;
+  --color-brass-soft: #e7eeff;
+  --color-get: #0c8a4c;
+  --color-get-soft: #e2f6eb;
+  --color-give: #d9362b;
+  --color-give-soft: #fdebe9;
+  --color-warn: #c46a00;
+  --color-warn-soft: #fff3e0;
+}
+
+/* Header / sidebar: deep navy into royal blue. */
+@utility bg-header {
+  background-color: var(--color-ink);
+  background-image: linear-gradient(135deg, #0f1d45 0%, #16307a 55%, #2455e6 130%);
 }
 
 @layer base {

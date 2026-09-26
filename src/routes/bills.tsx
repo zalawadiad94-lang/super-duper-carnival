@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link, createFileRoute } from "@tanstack/react-router";
-import { ChevronRight, FilePlus2, Search } from "lucide-react";
+import { ChevronRight, FilePlus2, Package, Search } from "lucide-react";
 import { Money } from "@/components/money";
 import { Button, EmptyState, PageIntro, TextInput } from "@/components/ui";
 import {
@@ -47,6 +47,7 @@ function BillsPage() {
   const bills = useLedger((state) => state.bills);
   const parties = useLedger((state) => state.parties);
   const openBillForm = useUi((state) => state.openBillForm);
+  const itemCount = useLedger((state) => state.items.length);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<(typeof STATUS_FILTERS)[number]["id"]>("all");
 
@@ -132,8 +133,23 @@ function BillsPage() {
           <ChevronRight className="size-4" aria-hidden="true" />
         </Link>
       </div>
+      <Link
+        to="/items"
+        className="mt-2 flex items-center justify-between gap-3 rounded-2xl border border-line bg-surface px-4 py-3"
+      >
+        <span className="flex items-center gap-3">
+          <span className="flex size-10 items-center justify-center rounded-xl bg-warn-soft text-warn">
+            <Package className="size-5" aria-hidden="true" />
+          </span>
+          <span>
+            <span className="block text-sm font-semibold">Items &amp; stock</span>
+            <span className="text-xs text-muted">{itemCount} item{itemCount === 1 ? "" : "s"} · price and current stock</span>
+          </span>
+        </span>
+        <ChevronRight className="size-5 text-brass" aria-hidden="true" />
+      </Link>
 
-      <div role="tablist" className="mt-4 grid grid-cols-3 rounded-xl bg-ink p-1">
+      <div role="tablist" className="bg-header mt-4 grid grid-cols-3 rounded-xl p-1">
         {BILL_TYPES.map((type) => (
           <button
             key={type}
@@ -143,7 +159,7 @@ function BillsPage() {
             onClick={() => navigate({ search: { tab: type }, replace: true })}
             className={cn(
               "h-10 rounded-lg text-sm font-semibold",
-              tab === type ? "bg-brass text-bg" : "text-bg/80",
+              tab === type ? "bg-surface text-brass shadow-sm" : "text-bg/85",
             )}
           >
             {BILL_META[type].tab}

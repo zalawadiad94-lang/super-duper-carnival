@@ -4,7 +4,18 @@ import { ChevronLeft, MessageCircle, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Money } from "@/components/money";
 import { Button, ConfirmDialog } from "@/components/ui";
-import { BILL_META, STATUS_META, billDue, billLabel, billPaid, billStatus, possessive, type Bill } from "@/lib/bills";
+import {
+  BILL_META,
+  STATUS_META,
+  billDue,
+  billLabel,
+  billPaid,
+  billStatus,
+  formatQty,
+  lineTotal,
+  possessive,
+  type Bill,
+} from "@/lib/bills";
 import { cn } from "@/lib/cn";
 import { formatDay, formatINR } from "@/lib/format";
 import { useLedger, useUi } from "@/lib/store";
@@ -26,6 +37,9 @@ function shareText(business: string, name: string, bill: Bill) {
     `${billLabel(bill)} from ${business}`,
     `Date: ${formatDay(bill.date)}`,
     bill.note ? `Details: ${bill.note}` : null,
+    ...bill.lines.map(
+      (line) => `• ${line.name}: ${formatQty(line.qty, line.unit)} × ${formatINR(line.rate)} = ${formatINR(lineTotal(line))}`,
+    ),
     `Amount: ${formatINR(bill.amount)}`,
     billPaid(bill) > 0 ? `Paid: ${formatINR(billPaid(bill))}` : null,
     due > 0 ? `Balance due: ${formatINR(due)}` : "Fully paid. Thank you.",
@@ -130,6 +144,22 @@ function BillPage() {
             <Money value={due} tone={due > 0 ? "give" : "settled"} className="text-xl" />
           </div>
         </div>
+        {bill.lines.length ? (
+          <div className="mt-3 border-t border-line pt-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted">Items</p>
+            {bill.lines.map((line) => (
+              <div key={line.id} className="mt-2 flex items-start justify-between gap-3 text-sm">
+                <span className="min-w-0">
+                  <span className="block font-medium">{line.name}</span>
+                  <span className="text-xs text-muted">
+                    {formatQty(line.qty, line.unit)} × {formatINR(line.rate)}
+                  </span>
+                </span>
+                <Money value={lineTotal(line)} className="shrink-0 text-base" />
+              </div>
+            ))}
+          </div>
+        ) : null}
         {bill.note ? <p className="mt-3 border-t border-line pt-3 text-sm">{bill.note}</p> : null}
         <p className="mt-3 text-xs text-muted">
           {bill.entryId && party ? `Written in ${possessive(party.name)} khata.` : "Not in any party's khata."}

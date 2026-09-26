@@ -16,7 +16,7 @@ export const Route = createRootRoute({
         name: "description",
         content: "Contractor khata for construction sites — you'll get, you'll give, labour, material, and bills.",
       },
-      { name: "theme-color", content: "#1c2430" },
+      { name: "theme-color", content: "#0f1d45" },
     ],
     links: [
       { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },

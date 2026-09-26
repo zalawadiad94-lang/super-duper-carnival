@@ -1,6 +1,15 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { khataKinds, khataNote, type Bill, type BillPayment, type BillType } from "@/lib/bills";
+import {
+  billLabel,
+  khataKinds,
+  khataNote,
+  type Bill,
+  type BillLine,
+  type BillPayment,
+  type BillType,
+  type Item,
+} from "@/lib/bills";
 import {
   parseBooks,
   sampleBooks,
@@ -45,7 +54,10 @@ export type BillInput = {
   date: string;
   amount: number;
   note: string;
+  lines: BillLine[];
 };
+
+export type ItemInput = Omit<Item, "id" | "createdAt">;
 
 export type PaymentInput = { amount: number; date: string };
 
@@ -67,6 +79,9 @@ type LedgerState = Books & {
   deleteBill: (id: string) => void;
   addBillPayment: (billId: string, input: PaymentInput) => void;
   deleteBillPayment: (billId: string, paymentId: string) => void;
+  addItem: (input: ItemInput) => string;
+  updateItem: (id: string, input: ItemInput) => void;
+  deleteItem: (id: string) => void;
   loadSample: () => void;
   clearAll: () => void;
   replaceBooks: (value: unknown) => boolean;
@@ -103,7 +118,7 @@ function paymentEntry(bill: Bill, role: Party["role"], payment: BillPayment, id:
     kind: khataKinds(bill.type, role).payment,
     amount: payment.amount,
     date: payment.date,
-    note: `Payment for ${khataNote({ ...bill, note: "" })}`,
+    note: `Payment for ${billLabel(bill)}`,
     createdAt,
   };
 }
@@ -331,6 +346,28 @@ export const useLedger = create<LedgerState>()(
             entries: state.entries.filter((entry) => entry.id !== payment.entryId),
           };
         }),
+      addItem: (input) => {
+        const id = uid();
+        const item: Item = { id, ...input, name: input.name.trim(), unit: input.unit.trim(), createdAt: new Date().toISOString() };
+        set((state) => ({ items: [item, ...state.items] }));
+        return id;
+      },
+      updateItem: (id, input) =>
+        set((state) => ({
+          items: state.items.map((item) =>
+            item.id === id ? { ...item, ...input, name: input.name.trim(), unit: input.unit.trim() } : item,
+          ),
+        })),
+      deleteItem: (id) =>
+        set((state) => ({
+          items: state.items.filter((item) => item.id !== id),
+          // Bills keep the row (name, qty, rate); it just stops counting as stock.
+          bills: state.bills.map((bill) =>
+            bill.lines.some((line) => line.itemId === id)
+              ? { ...bill, lines: bill.lines.map((line) => (line.itemId === id ? { ...line, itemId: null } : line)) }
+              : bill,
+          ),
+        })),
       loadSample: () => set({ ...sampleBooks(), hydrated: true }),
       clearAll: () =>
         set({
@@ -339,6 +376,7 @@ export const useLedger = create<LedgerState>()(
           sites: [],
           entries: [],
           bills: [],
+          items: [],
           showSampleHint: false,
         }),
       replaceBooks: (value) => {
@@ -350,9 +388,13 @@ export const useLedger = create<LedgerState>()(
     }),
     {
       name: "sitekhata-books-v1",
-      // v1 added bills; books saved before that have none (not the sample's).
-      version: 1,
-      migrate: (persisted) => ({ bills: [], ...(persisted as Partial<LedgerState>) }) as LedgerState,
+      // v1 added bills, v2 items and bill rows. Books saved before start with
+      // none (not the sample's).
+      version: 2,
+      migrate: (persisted) => {
+        const state = { bills: [], items: [], ...(persisted as Partial<LedgerState>) } as LedgerState;
+        return { ...state, bills: state.bills.map((bill) => ({ ...bill, lines: bill.lines ?? [] })) };
+      },
       skipHydration: true,
       partialize: (state) => ({
         businessName: state.businessName,
@@ -360,6 +402,7 @@ export const useLedger = create<LedgerState>()(
         sites: state.sites,
         entries: state.entries,
         bills: state.bills,
+        items: state.items,
         showSampleHint: state.showSampleHint,
       }),
     },
@@ -384,6 +427,9 @@ type UiState = {
   booksOpen: boolean;
   billForm: BillFormState;
   paymentForm: PaymentFormState;
+  itemForm: FormState;
+  openItemForm: (id?: string | null) => void;
+  closeItemForm: () => void;
   openBillForm: (type: BillType, id?: string | null) => void;
   closeBillForm: () => void;
   openPaymentForm: (billId: string) => void;
@@ -403,6 +449,7 @@ const closed = {
   booksOpen: false,
   billForm: { open: false, id: null, type: "sale" as BillType },
   paymentForm: { open: false, billId: null },
+  itemForm: { open: false, id: null },
 };
 
 export const useUi = create<UiState>((set) => ({
@@ -412,6 +459,14 @@ export const useUi = create<UiState>((set) => ({
   booksOpen: false,
   billForm: closed.billForm,
   paymentForm: closed.paymentForm,
+  itemForm: closed.itemForm,
+  openItemForm: (id = null) =>
+    set({
+      ...closed,
+      add: { open: false, partyId: null, siteId: null, entryId: null },
+      itemForm: { open: true, id },
+    }),
+  closeItemForm: () => set({ itemForm: { open: false, id: null } }),
   openBillForm: (type, id = null) =>
     set({
       ...closed,

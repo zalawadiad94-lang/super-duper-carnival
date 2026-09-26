@@ -3,6 +3,7 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import { BarChart3, BookOpen, Building2, Home, Plus, ReceiptText, Users } from "lucide-react";
 import { Toaster } from "sonner";
 import { BillDrawer, PaymentDrawer } from "@/components/bill-drawers";
+import { ItemDrawer } from "@/components/items";
 import { BooksDrawer, EntryDrawer, PartyDrawer, SiteDrawer } from "@/components/drawers";
 import { InstallPcBar } from "@/components/install-pc";
 import { cn } from "@/lib/cn";
@@ -19,7 +20,7 @@ const NAV = [
 function isActive(path: string, href: string) {
   if (href === "/") return path === "/";
   if (href === "/parties") return path === "/parties" || path.startsWith("/party/");
-  if (href === "/bills") return path === "/bills" || path.startsWith("/bill/");
+  if (href === "/bills") return path === "/bills" || path.startsWith("/bill/") || path === "/items";
   if (href === "/sites") return path === "/sites" || path.startsWith("/site/");
   return path === href;
 }
@@ -33,7 +34,7 @@ function typingTarget(target: EventTarget | null) {
 function KhataSkeleton() {
   return (
     <div className="min-h-dvh bg-bg">
-      <div className="bg-ink px-5 py-5 text-bg">
+      <div className="bg-header px-5 py-5 text-bg">
         <p className="font-display text-3xl leading-none">Sitekhata</p>
         <p className="mt-2 text-sm">Opening your books…</p>
       </div>
@@ -82,10 +83,10 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-dvh bg-bg text-ink">
       <div className="flex h-dvh min-h-0 overflow-hidden">
-        <aside className="hidden h-full w-56 shrink-0 flex-col bg-ink text-bg lg:flex">
+        <aside className="bg-header hidden h-full w-56 shrink-0 flex-col text-bg lg:flex">
           <div className="px-5 pb-4 pt-6">
             <div className="flex items-center gap-2">
-              <BookOpen className="size-5 text-brass-soft" aria-hidden="true" />
+              <BookOpen className="size-5 text-bg" aria-hidden="true" />
               <p className="font-display text-2xl leading-none">Sitekhata</p>
             </div>
             <p className="mt-2 text-sm text-bg/80">Office khata</p>
@@ -100,7 +101,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                   to={item.href}
                   className={cn(
                     "flex h-11 items-center gap-3 rounded-xl px-3 text-sm font-semibold",
-                    active ? "bg-brass text-bg" : "text-bg/80",
+                    active ? "bg-surface/15 text-bg" : "text-bg/75",
                   )}
                 >
                   <Icon className="size-5" aria-hidden="true" />
@@ -121,7 +122,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </aside>
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <header className="flex items-center justify-between gap-3 bg-ink px-4 py-3 text-bg lg:hidden">
+          <header className="bg-header flex items-center justify-between gap-3 px-4 py-3 text-bg shadow-md lg:hidden">
             <div className="min-w-0">
               <p className="font-display text-2xl leading-none">Sitekhata</p>
               <button type="button" onClick={() => setBooksOpen(true)} className="mt-1 max-w-full truncate text-left text-xs text-bg/80">
@@ -131,7 +132,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <button
               type="button"
               onClick={() => openAdd()}
-              className="flex h-11 items-center gap-1 rounded-xl bg-brass px-3 text-sm font-semibold text-bg"
+              className="flex h-11 items-center gap-1 rounded-xl bg-surface px-3 text-sm font-semibold text-brass shadow-sm"
             >
               <Plus className="size-4" aria-hidden="true" />
               Add
@@ -188,6 +189,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <BooksDrawer />
       <BillDrawer />
       <PaymentDrawer />
+      <ItemDrawer />
       <Toaster
         position="top-center"
         toastOptions={{

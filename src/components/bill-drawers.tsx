@@ -1,14 +1,50 @@
 import { useEffect, useMemo, useState } from "react";
+import { ChevronLeft, PackagePlus, X } from "lucide-react";
 import { toast } from "sonner";
 import { DrawerFrame } from "@/components/drawers";
+import { ItemForm, ItemPicker } from "@/components/items";
+import { Money } from "@/components/money";
 import { Button, Field, SelectInput, TextArea, TextInput } from "@/components/ui";
-import { BILL_META, BILL_TYPES, billDue, billLabel, nextBillNumber, possessive, type BillType } from "@/lib/bills";
+import {
+  BILL_META,
+  BILL_TYPES,
+  STOCK_EFFECT,
+  billDue,
+  billLabel,
+  defaultRate,
+  lineTotal,
+  nextBillNumber,
+  possessive,
+  round2,
+  type BillLine,
+  type BillType,
+  type Item,
+} from "@/lib/bills";
 import { cn } from "@/lib/cn";
 import { formatINR, parseAmount, todayISO } from "@/lib/format";
 import { ROLE_META, type PartyRole } from "@/lib/model";
 import { useLedger, useUi } from "@/lib/store";
 
 type PayMode = "unpaid" | "full" | "part";
+type View = "form" | "pick" | "create";
+
+/** A bill row while editing: qty and rate as typed. */
+type DraftLine = Omit<BillLine, "qty" | "rate"> & { qty: string; rate: string };
+
+function toNum(raw: string) {
+  const n = Number(raw.replace(/,/g, "").trim());
+  return raw.trim() && Number.isFinite(n) ? n : NaN;
+}
+
+function draftTotal(lines: DraftLine[]) {
+  return round2(
+    lines.reduce((sum, line) => {
+      const qty = toNum(line.qty);
+      const rate = toNum(line.rate);
+      return Number.isNaN(qty) || Number.isNaN(rate) ? sum : sum + lineTotal({ qty, rate });
+    }, 0),
+  );
+}
 
 // Who you usually bill, and who usually bills you, listed first.
 const ROLE_ORDER: Record<BillType, PartyRole[]> = {
@@ -53,6 +89,7 @@ export function BillDrawer() {
   const sites = useLedger((state) => state.sites);
   const addBill = useLedger((state) => state.addBill);
   const updateBill = useLedger((state) => state.updateBill);
+  const addItem = useLedger((state) => state.addItem);
   const existing = form.id ? bills.find((bill) => bill.id === form.id) : undefined;
 
   const [type, setType] = useState<BillType>("sale");
@@ -66,10 +103,14 @@ export function BillDrawer() {
   const [payMode, setPayMode] = useState<PayMode>("unpaid");
   const [paidNow, setPaidNow] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [lines, setLines] = useState<DraftLine[]>([]);
+  const [view, setView] = useState<View>("form");
 
   useEffect(() => {
     if (!form.open) return;
     const bill = existing;
+    setLines((bill?.lines ?? []).map((line) => ({ ...line, qty: String(line.qty), rate: String(line.rate) })));
+    setView("form");
     const nextType = bill?.type ?? form.type;
     setType(nextType);
     setPartyId(bill?.partyId ?? "");
@@ -88,6 +129,7 @@ export function BillDrawer() {
 
   function changeType(next: BillType) {
     setType(next);
+    if (!STOCK_EFFECT[next]) setLines([]);
     if (!existing) {
       setNumber(String(nextBillNumber(bills, next)));
       setPayMode(next === "expense" ? "full" : "unpaid");
@@ -104,11 +146,53 @@ export function BillDrawer() {
   );
   const party = parties.find((item) => item.id === partyId);
   const meta = BILL_META[type];
+  const hasItems = STOCK_EFFECT[type] !== 0;
+  const itemsTotal = draftTotal(lines);
+
+  function qtyOf(itemId: string) {
+    return lines.filter((line) => line.itemId === itemId).reduce((sum, line) => sum + (toNum(line.qty) || 0), 0);
+  }
+
+  function addLine(item: Item) {
+    setLines((current) => [
+      ...current,
+      {
+        id: crypto.randomUUID(),
+        itemId: item.id,
+        name: item.name,
+        unit: item.unit,
+        qty: "1",
+        rate: String(defaultRate(item, type)),
+      },
+    ]);
+  }
+
+  function stepLine(item: Item, delta: number) {
+    setLines((current) => {
+      const index = current.findIndex((line) => line.itemId === item.id);
+      if (index < 0) return current;
+      const qty = round2((toNum(current[index].qty) || 0) + delta);
+      if (qty <= 0) return current.filter((_, i) => i !== index);
+      return current.map((line, i) => (i === index ? { ...line, qty: String(qty) } : line));
+    });
+  }
+
+  function changeLine(id: string, patch: Partial<DraftLine>) {
+    setLines((current) => current.map((line) => (line.id === id ? { ...line, ...patch } : line)));
+  }
 
   function onSubmit(event: React.FormEvent) {
     event.preventDefault();
-    const value = parseAmount(amount);
-    if (!value) return setError("Enter the bill amount.");
+    const finalLines: BillLine[] = [];
+    for (const line of hasItems ? lines : []) {
+      const qty = toNum(line.qty);
+      const rate = toNum(line.rate);
+      if (Number.isNaN(qty) || qty <= 0) return setError(`Enter the quantity of ${line.name}.`);
+      if (Number.isNaN(rate) || rate < 0) return setError(`Enter the rate of ${line.name}.`);
+      finalLines.push({ ...line, qty: round2(qty), rate: round2(rate) });
+    }
+    const value = finalLines.length ? itemsTotal : parseAmount(amount);
+    if (!value) return setError(finalLines.length ? "The items add up to ₹0." : "Enter the bill amount.");
     if (!partyId && !name.trim()) return setError(`Choose a party or type the ${meta.nameLabel.toLowerCase()}.`);
     const num = Number(number);
     if (!Number.isInteger(num) || num < 1) return setError("Bill number must be 1 or more.");
@@ -129,6 +213,7 @@ export function BillDrawer() {
       date,
       amount: value,
       note,
+      lines: finalLines,
     };
     if (existing) {
       updateBill(existing.id, input);
@@ -146,9 +231,53 @@ export function BillDrawer() {
       onOpenChange={(open) => {
         if (!open) close();
       }}
-      title={existing ? `Edit ${billLabel(existing)}` : "New bill"}
-      lede={party ? `Also written in ${possessive(party.name)} khata.` : "Pick a party to also write it in their khata."}
+      title={
+        view === "pick"
+          ? "Add items to your bill"
+          : view === "create"
+            ? "Create new item"
+            : existing
+              ? `Edit ${billLabel(existing)}`
+              : `New ${meta.tab.toLowerCase()} bill`
+      }
+      lede={
+        view !== "form"
+          ? undefined
+          : party
+            ? `Also written in ${possessive(party.name)} khata.`
+            : "Pick a party to also write it in their khata."
+      }
     >
+      {view === "pick" ? (
+        <div className="flex flex-col gap-3">
+          <ItemPicker
+            type={type}
+            qtyOf={qtyOf}
+            onAdd={addLine}
+            onStep={stepLine}
+            onCreate={() => setView("create")}
+          />
+          <Button className="sticky bottom-0 w-full shadow-lg" onClick={() => setView("form")}>
+            Done · {lines.length} item{lines.length === 1 ? "" : "s"} · <Money value={itemsTotal} className="text-bg" />
+          </Button>
+        </div>
+      ) : view === "create" ? (
+        <div className="flex flex-col gap-3">
+          <button type="button" onClick={() => setView("pick")} className="inline-flex items-center gap-1 text-sm font-semibold text-muted">
+            <ChevronLeft className="size-4" aria-hidden="true" />
+            Back to items
+          </button>
+          <ItemForm
+            submitLabel="Create and add to bill"
+            onSave={(input) => {
+              const id = addItem(input);
+              addLine({ ...input, id, createdAt: new Date().toISOString() });
+              toast.success(`${input.name.trim()} created`);
+              setView("pick");
+            }}
+          />
+        </div>
+      ) : (
       <form onSubmit={onSubmit} className="flex flex-col gap-4">
         <Chips
           value={type}
@@ -176,10 +305,65 @@ export function BillDrawer() {
             <TextInput value={name} onChange={(event) => setName(event.target.value)} placeholder={meta.namePlaceholder} />
           </Field>
         ) : null}
+        {hasItems ? (
+          <div className="rounded-2xl border border-line bg-bg p-3">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold">Items</p>
+              {lines.length ? <p className="text-xs text-muted">{lines.length} on this bill</p> : null}
+            </div>
+            {lines.map((line) => (
+              <div key={line.id} className="mt-2 rounded-xl border border-line bg-surface p-2">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="min-w-0 truncate text-sm font-semibold">{line.name}</p>
+                  <button
+                    type="button"
+                    onClick={() => setLines((current) => current.filter((item) => item.id !== line.id))}
+                    className="flex size-8 shrink-0 items-center justify-center rounded-lg text-muted"
+                    aria-label={`Remove ${line.name}`}
+                  >
+                    <X className="size-4" />
+                  </button>
+                </div>
+                <div className="mt-1 grid grid-cols-[1fr_1fr_auto] items-end gap-2">
+                  <label className="text-xs text-muted">
+                    Qty{line.unit ? ` (${line.unit})` : ""}
+                    <TextInput inputMode="decimal" value={line.qty} onChange={(event) => changeLine(line.id, { qty: event.target.value })} className="mt-1 h-10" />
+                  </label>
+                  <label className="text-xs text-muted">
+                    Rate (₹)
+                    <TextInput inputMode="decimal" value={line.rate} onChange={(event) => changeLine(line.id, { rate: event.target.value })} className="mt-1 h-10" />
+                  </label>
+                  <Money
+                    value={Number.isNaN(toNum(line.qty) * toNum(line.rate)) ? 0 : lineTotal({ qty: toNum(line.qty), rate: toNum(line.rate) })}
+                    className="pb-2 text-base"
+                  />
+                </div>
+              </div>
+            ))}
+            <Button variant="soft" className="mt-2 w-full" onClick={() => setView("pick")}>
+              <PackagePlus className="size-4" aria-hidden="true" />
+              {lines.length ? "Add more items" : "Add items"}
+            </Button>
+            {lines.length ? (
+              <p className="mt-2 text-right text-xs text-muted">
+                {type === "sale" ? "Stock goes down" : "Stock goes up"} by these quantities
+              </p>
+            ) : null}
+          </div>
+        ) : null}
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Amount (₹)">
-            <TextInput inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0" />
-          </Field>
+          {hasItems && lines.length ? (
+            <div className="flex flex-col gap-1.5 text-sm font-medium">
+              Total
+              <div className="flex h-12 items-center rounded-xl bg-brass-soft px-3">
+                <Money value={itemsTotal} className="text-lg text-brass" />
+              </div>
+            </div>
+          ) : (
+            <Field label="Amount (₹)">
+              <TextInput inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0" />
+            </Field>
+          )}
           <Field label={`${meta.numberLabel} no.`}>
             <TextInput inputMode="numeric" value={number} onChange={(event) => setNumber(event.target.value.replace(/\D/g, ""))} />
           </Field>
@@ -235,6 +419,7 @@ export function BillDrawer() {
           {existing ? "Save bill" : "Add bill"}
         </Button>
       </form>
+      )}
     </DrawerFrame>
   );
 }
