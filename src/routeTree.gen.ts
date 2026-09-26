@@ -10,15 +10,22 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as BillsRouteImport } from './routes/bills'
 import { Route as PartiesRouteImport } from './routes/parties'
 import { Route as ReportsRouteImport } from './routes/reports'
 import { Route as SitesRouteImport } from './routes/sites'
+import { Route as BillBillIdRouteImport } from './routes/bill.$billId'
 import { Route as PartyPartyIdRouteImport } from './routes/party.$partyId'
 import { Route as SiteSiteIdRouteImport } from './routes/site.$siteId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BillsRoute = BillsRouteImport.update({
+  id: '/bills',
+  path: '/bills',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PartiesRoute = PartiesRouteImport.update({
@@ -36,6 +43,11 @@ const SitesRoute = SitesRouteImport.update({
   path: '/sites',
   getParentRoute: () => rootRouteImport,
 } as any)
+const BillBillIdRoute = BillBillIdRouteImport.update({
+  id: '/bill/$billId',
+  path: '/bill/$billId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PartyPartyIdRoute = PartyPartyIdRouteImport.update({
   id: '/party/$partyId',
   path: '/party/$partyId',
@@ -49,26 +61,32 @@ const SiteSiteIdRoute = SiteSiteIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/bills': typeof BillsRoute
   '/parties': typeof PartiesRoute
   '/reports': typeof ReportsRoute
   '/sites': typeof SitesRoute
+  '/bill/$billId': typeof BillBillIdRoute
   '/party/$partyId': typeof PartyPartyIdRoute
   '/site/$siteId': typeof SiteSiteIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/bills': typeof BillsRoute
   '/parties': typeof PartiesRoute
   '/reports': typeof ReportsRoute
   '/sites': typeof SitesRoute
+  '/bill/$billId': typeof BillBillIdRoute
   '/party/$partyId': typeof PartyPartyIdRoute
   '/site/$siteId': typeof SiteSiteIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/bills': typeof BillsRoute
   '/parties': typeof PartiesRoute
   '/reports': typeof ReportsRoute
   '/sites': typeof SitesRoute
+  '/bill/$billId': typeof BillBillIdRoute
   '/party/$partyId': typeof PartyPartyIdRoute
   '/site/$siteId': typeof SiteSiteIdRoute
 }
@@ -76,34 +94,42 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/bills'
     | '/parties'
     | '/reports'
     | '/sites'
+    | '/bill/$billId'
     | '/party/$partyId'
     | '/site/$siteId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/bills'
     | '/parties'
     | '/reports'
     | '/sites'
+    | '/bill/$billId'
     | '/party/$partyId'
     | '/site/$siteId'
   id:
     | '__root__'
     | '/'
+    | '/bills'
     | '/parties'
     | '/reports'
     | '/sites'
+    | '/bill/$billId'
     | '/party/$partyId'
     | '/site/$siteId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  BillsRoute: typeof BillsRoute
   PartiesRoute: typeof PartiesRoute
   ReportsRoute: typeof ReportsRoute
   SitesRoute: typeof SitesRoute
+  BillBillIdRoute: typeof BillBillIdRoute
   PartyPartyIdRoute: typeof PartyPartyIdRoute
   SiteSiteIdRoute: typeof SiteSiteIdRoute
 }
@@ -115,6 +141,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/bills': {
+      id: '/bills'
+      path: '/bills'
+      fullPath: '/bills'
+      preLoaderRoute: typeof BillsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/parties': {
@@ -138,6 +171,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SitesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/bill/$billId': {
+      id: '/bill/$billId'
+      path: '/bill/$billId'
+      fullPath: '/bill/$billId'
+      preLoaderRoute: typeof BillBillIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/party/$partyId': {
       id: '/party/$partyId'
       path: '/party/$partyId'
@@ -157,9 +197,11 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  BillsRoute: BillsRoute,
   PartiesRoute: PartiesRoute,
   ReportsRoute: ReportsRoute,
   SitesRoute: SitesRoute,
+  BillBillIdRoute: BillBillIdRoute,
   PartyPartyIdRoute: PartyPartyIdRoute,
   SiteSiteIdRoute: SiteSiteIdRoute,
 }

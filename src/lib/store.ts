@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { khataKinds, khataNote, type Bill, type BillPayment, type BillType } from "@/lib/bills";
 import {
   parseBooks,
   sampleBooks,
@@ -35,6 +36,19 @@ export type EntryInput = {
   note: string;
 };
 
+export type BillInput = {
+  type: BillType;
+  number: number;
+  partyId: string | null;
+  partyName: string;
+  siteId: string | null;
+  date: string;
+  amount: number;
+  note: string;
+};
+
+export type PaymentInput = { amount: number; date: string };
+
 type LedgerState = Books & {
   hydrated: boolean;
   setBusinessName: (name: string) => void;
@@ -48,6 +62,11 @@ type LedgerState = Books & {
   addEntry: (input: EntryInput) => string;
   updateEntry: (id: string, input: EntryInput) => void;
   deleteEntry: (id: string) => void;
+  addBill: (input: BillInput, paidNow: number) => string;
+  updateBill: (id: string, input: BillInput) => void;
+  deleteBill: (id: string) => void;
+  addBillPayment: (billId: string, input: PaymentInput) => void;
+  deleteBillPayment: (billId: string, paymentId: string) => void;
   loadSample: () => void;
   clearAll: () => void;
   replaceBooks: (value: unknown) => boolean;
@@ -58,6 +77,75 @@ function uid() {
 }
 
 const sample = sampleBooks();
+
+/**
+ * Bills with a party are mirrored into that party's khata: one entry for the
+ * bill and one per payment. These helpers build and rewrite those entries.
+ */
+function billEntry(bill: Bill, role: Party["role"], id: string, createdAt: string): Entry {
+  return {
+    id,
+    partyId: bill.partyId!,
+    siteId: bill.siteId,
+    kind: khataKinds(bill.type, role).bill,
+    amount: bill.amount,
+    date: bill.date,
+    note: khataNote(bill),
+    createdAt,
+  };
+}
+
+function paymentEntry(bill: Bill, role: Party["role"], payment: BillPayment, id: string, createdAt: string): Entry {
+  return {
+    id,
+    partyId: bill.partyId!,
+    siteId: bill.siteId,
+    kind: khataKinds(bill.type, role).payment,
+    amount: payment.amount,
+    date: payment.date,
+    note: `Payment for ${khataNote({ ...bill, note: "" })}`,
+    createdAt,
+  };
+}
+
+/**
+ * Rewrite a bill's khata entries after the bill changed. Missing entries are
+ * created only where `create` says so (a new bill, a new payment, a newly
+ * chosen party); a line someone deleted from the khata stays deleted.
+ */
+function syncBill(
+  bill: Bill,
+  parties: Party[],
+  entries: Entry[],
+  create: { bill: boolean; payments: "all" | Set<string> },
+): { bill: Bill; entries: Entry[] } {
+  const party = bill.partyId ? parties.find((item) => item.id === bill.partyId) : undefined;
+  const linked = new Set([bill.entryId, ...bill.payments.map((payment) => payment.entryId)].filter(Boolean));
+  const kept = entries.filter((entry) => !linked.has(entry.id));
+  const createdAtOf = (id: string | null) => entries.find((entry) => entry.id === id)?.createdAt ?? new Date().toISOString();
+  if (!party) {
+    return {
+      bill: { ...bill, partyId: null, entryId: null, payments: bill.payments.map((payment) => ({ ...payment, entryId: null })) },
+      entries: kept,
+    };
+  }
+  const makePayment = (payment: BillPayment) =>
+    create.payments === "all" || create.payments.has(payment.id);
+  const entryId = bill.entryId ?? (create.bill ? uid() : null);
+  const payments = bill.payments.map((payment) => ({
+    ...payment,
+    entryId: payment.entryId ?? (makePayment(payment) ? uid() : null),
+  }));
+  const next: Bill = { ...bill, partyName: party.name, entryId, payments };
+  const mirrored: Entry[] = [];
+  if (entryId) mirrored.push(billEntry(next, party.role, entryId, createdAtOf(bill.entryId)));
+  payments.forEach((payment, index) => {
+    if (payment.entryId) {
+      mirrored.push(paymentEntry(next, party.role, payment, payment.entryId, createdAtOf(bill.payments[index].entryId)));
+    }
+  });
+  return { bill: next, entries: [...mirrored, ...kept] };
+}
 
 export const useLedger = create<LedgerState>()(
   persist(
@@ -97,6 +185,12 @@ export const useLedger = create<LedgerState>()(
         set((state) => ({
           parties: state.parties.filter((party) => party.id !== id),
           entries: state.entries.filter((entry) => entry.partyId !== id),
+          // Keep their bills under the old name; the khata entries go with the party.
+          bills: state.bills.map((bill) =>
+            bill.partyId === id
+              ? { ...bill, partyId: null, entryId: null, payments: bill.payments.map((pay) => ({ ...pay, entryId: null })) }
+              : bill,
+          ),
           sites: state.sites.map((site) =>
             site.clientPartyId === id ? { ...site, clientPartyId: null } : site,
           ),
@@ -134,6 +228,7 @@ export const useLedger = create<LedgerState>()(
           entries: state.entries.map((entry) =>
             entry.siteId === id ? { ...entry, siteId: null } : entry,
           ),
+          bills: state.bills.map((bill) => (bill.siteId === id ? { ...bill, siteId: null } : bill)),
         })),
       addEntry: (input) => {
         const id = uid();
@@ -153,7 +248,89 @@ export const useLedger = create<LedgerState>()(
           ),
         })),
       deleteEntry: (id) =>
-        set((state) => ({ entries: state.entries.filter((entry) => entry.id !== id) })),
+        set((state) => ({
+          entries: state.entries.filter((entry) => entry.id !== id),
+          // A bill's khata line deleted from the khata: the bill stays, unlinked.
+          bills: state.bills.map((bill) =>
+            bill.entryId === id || bill.payments.some((pay) => pay.entryId === id)
+              ? {
+                  ...bill,
+                  entryId: bill.entryId === id ? null : bill.entryId,
+                  payments: bill.payments.map((pay) => (pay.entryId === id ? { ...pay, entryId: null } : pay)),
+                }
+              : bill,
+          ),
+        })),
+      addBill: (input, paidNow) => {
+        const id = uid();
+        const now = new Date().toISOString();
+        const draft: Bill = {
+          id,
+          ...input,
+          partyName: input.partyName.trim(),
+          note: input.note.trim(),
+          entryId: null,
+          payments: paidNow > 0 ? [{ id: uid(), amount: paidNow, date: input.date, entryId: null }] : [],
+          createdAt: now,
+        };
+        set((state) => {
+          const synced = syncBill(draft, state.parties, state.entries, { bill: true, payments: "all" });
+          return { bills: [synced.bill, ...state.bills], entries: synced.entries };
+        });
+        return id;
+      },
+      updateBill: (id, input) =>
+        set((state) => {
+          const bill = state.bills.find((item) => item.id === id);
+          if (!bill) return {};
+          const newParty = input.partyId !== bill.partyId;
+          const synced = syncBill(
+            { ...bill, ...input, partyName: input.partyName.trim(), note: input.note.trim() },
+            state.parties,
+            state.entries,
+            { bill: newParty, payments: newParty ? "all" : new Set() },
+          );
+          return {
+            bills: state.bills.map((item) => (item.id === id ? synced.bill : item)),
+            entries: synced.entries,
+          };
+        }),
+      deleteBill: (id) =>
+        set((state) => {
+          const bill = state.bills.find((item) => item.id === id);
+          if (!bill) return {};
+          const linked = new Set([bill.entryId, ...bill.payments.map((pay) => pay.entryId)].filter(Boolean));
+          return {
+            bills: state.bills.filter((item) => item.id !== id),
+            entries: state.entries.filter((entry) => !linked.has(entry.id)),
+          };
+        }),
+      addBillPayment: (billId, input) =>
+        set((state) => {
+          const bill = state.bills.find((item) => item.id === billId);
+          if (!bill) return {};
+          const payment: BillPayment = { id: uid(), amount: input.amount, date: input.date, entryId: null };
+          const synced = syncBill({ ...bill, payments: [...bill.payments, payment] }, state.parties, state.entries, {
+            bill: false,
+            payments: new Set([payment.id]),
+          });
+          return {
+            bills: state.bills.map((item) => (item.id === billId ? synced.bill : item)),
+            entries: synced.entries,
+          };
+        }),
+      deleteBillPayment: (billId, paymentId) =>
+        set((state) => {
+          const bill = state.bills.find((item) => item.id === billId);
+          const payment = bill?.payments.find((item) => item.id === paymentId);
+          if (!bill || !payment) return {};
+          return {
+            bills: state.bills.map((item) =>
+              item.id === billId ? { ...item, payments: item.payments.filter((pay) => pay.id !== paymentId) } : item,
+            ),
+            entries: state.entries.filter((entry) => entry.id !== payment.entryId),
+          };
+        }),
       loadSample: () => set({ ...sampleBooks(), hydrated: true }),
       clearAll: () =>
         set({
@@ -161,6 +338,7 @@ export const useLedger = create<LedgerState>()(
           parties: [],
           sites: [],
           entries: [],
+          bills: [],
           showSampleHint: false,
         }),
       replaceBooks: (value) => {
@@ -172,12 +350,16 @@ export const useLedger = create<LedgerState>()(
     }),
     {
       name: "sitekhata-books-v1",
+      // v1 added bills; books saved before that have none (not the sample's).
+      version: 1,
+      migrate: (persisted) => ({ bills: [], ...(persisted as Partial<LedgerState>) }) as LedgerState,
       skipHydration: true,
       partialize: (state) => ({
         businessName: state.businessName,
         parties: state.parties,
         sites: state.sites,
         entries: state.entries,
+        bills: state.bills,
         showSampleHint: state.showSampleHint,
       }),
     },
@@ -192,12 +374,20 @@ type AddState = {
 };
 
 type FormState = { open: boolean; id: string | null };
+type BillFormState = FormState & { type: BillType };
+type PaymentFormState = { open: boolean; billId: string | null };
 
 type UiState = {
   add: AddState;
   partyForm: FormState;
   siteForm: FormState;
   booksOpen: boolean;
+  billForm: BillFormState;
+  paymentForm: PaymentFormState;
+  openBillForm: (type: BillType, id?: string | null) => void;
+  closeBillForm: () => void;
+  openPaymentForm: (billId: string) => void;
+  closePaymentForm: () => void;
   openAdd: (partial?: Partial<Omit<AddState, "open">>) => void;
   closeAdd: () => void;
   openPartyForm: (id?: string | null) => void;
@@ -207,13 +397,35 @@ type UiState = {
   setBooksOpen: (open: boolean) => void;
 };
 
-const closed = { partyForm: { open: false, id: null }, siteForm: { open: false, id: null }, booksOpen: false };
+const closed = {
+  partyForm: { open: false, id: null },
+  siteForm: { open: false, id: null },
+  booksOpen: false,
+  billForm: { open: false, id: null, type: "sale" as BillType },
+  paymentForm: { open: false, billId: null },
+};
 
 export const useUi = create<UiState>((set) => ({
   add: { open: false, partyId: null, siteId: null, entryId: null },
   partyForm: { open: false, id: null },
   siteForm: { open: false, id: null },
   booksOpen: false,
+  billForm: closed.billForm,
+  paymentForm: closed.paymentForm,
+  openBillForm: (type, id = null) =>
+    set({
+      ...closed,
+      add: { open: false, partyId: null, siteId: null, entryId: null },
+      billForm: { open: true, id, type },
+    }),
+  closeBillForm: () => set((state) => ({ billForm: { ...state.billForm, open: false, id: null } })),
+  openPaymentForm: (billId) =>
+    set({
+      ...closed,
+      add: { open: false, partyId: null, siteId: null, entryId: null },
+      paymentForm: { open: true, billId },
+    }),
+  closePaymentForm: () => set({ paymentForm: { open: false, billId: null } }),
   openAdd: (partial) =>
     set({
       ...closed,

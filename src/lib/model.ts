@@ -1,3 +1,4 @@
+import { parseBills, sampleBills, type Bill } from "@/lib/bills";
 import { daysAgo } from "@/lib/format";
 
 export const PARTY_ROLES = ["client", "supplier", "labour", "subcontractor"] as const;
@@ -222,6 +223,7 @@ export type Books = {
   parties: Party[];
   sites: Site[];
   entries: Entry[];
+  bills: Bill[];
   showSampleHint: boolean;
 };
 
@@ -308,6 +310,7 @@ export function sampleBooks(): Books {
     parties,
     sites,
     entries,
+    bills: sampleBills(),
     showSampleHint: true,
   };
 }
@@ -379,11 +382,19 @@ export function parseBooks(value: unknown): Books | null {
     });
   }
 
+  const bills = parseBills(value.bills, {
+    parties: partyIds,
+    sites: siteIds,
+    entries: new Set(entries.map((item) => item.id)),
+  });
+  if (!bills) return null;
+
   return {
     businessName: value.businessName.trim(),
     parties,
     sites,
     entries,
+    bills,
     showSampleHint: false,
   };
 }

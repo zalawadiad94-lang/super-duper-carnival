@@ -28,7 +28,7 @@ function useWideScreen() {
   return wide;
 }
 
-function DrawerFrame({
+export function DrawerFrame({
   open,
   onOpenChange,
   title,
@@ -578,6 +578,7 @@ export function BooksDrawer() {
   const parties = useLedger((state) => state.parties);
   const sites = useLedger((state) => state.sites);
   const entries = useLedger((state) => state.entries);
+  const bills = useLedger((state) => state.bills);
   const fileRef = useRef<HTMLInputElement>(null);
   const [name, setName] = useState(businessName);
   const [confirmClear, setConfirmClear] = useState(false);
@@ -588,7 +589,7 @@ export function BooksDrawer() {
   }, [open, businessName]);
 
   function exportBooks() {
-    const payload = { businessName, parties, sites, entries };
+    const payload = { businessName, parties, sites, entries, bills };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");

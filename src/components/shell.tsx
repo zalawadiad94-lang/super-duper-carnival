@@ -1,7 +1,8 @@
 import { useEffect, type ReactNode } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
-import { BarChart3, BookOpen, Building2, Home, Plus, Users } from "lucide-react";
+import { BarChart3, BookOpen, Building2, Home, Plus, ReceiptText, Users } from "lucide-react";
 import { Toaster } from "sonner";
+import { BillDrawer, PaymentDrawer } from "@/components/bill-drawers";
 import { BooksDrawer, EntryDrawer, PartyDrawer, SiteDrawer } from "@/components/drawers";
 import { InstallPcBar } from "@/components/install-pc";
 import { cn } from "@/lib/cn";
@@ -10,6 +11,7 @@ import { useLedger, useUi } from "@/lib/store";
 const NAV = [
   { href: "/", label: "Home", icon: Home },
   { href: "/parties", label: "Parties", icon: Users },
+  { href: "/bills", label: "Bills", icon: ReceiptText },
   { href: "/sites", label: "Sites", icon: Building2 },
   { href: "/reports", label: "Reports", icon: BarChart3 },
 ] as const;
@@ -17,6 +19,7 @@ const NAV = [
 function isActive(path: string, href: string) {
   if (href === "/") return path === "/";
   if (href === "/parties") return path === "/parties" || path.startsWith("/party/");
+  if (href === "/bills") return path === "/bills" || path.startsWith("/bill/");
   if (href === "/sites") return path === "/sites" || path.startsWith("/site/");
   return path === href;
 }
@@ -157,7 +160,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       </div>
 
       <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface lg:hidden">
-        <div className="mx-auto grid max-w-lg grid-cols-4">
+        <div className="mx-auto grid max-w-lg grid-cols-5">
           {NAV.map((item) => {
             const Icon = item.icon;
             const active = isActive(path, item.href);
@@ -183,6 +186,8 @@ export function AppShell({ children }: { children: ReactNode }) {
       <PartyDrawer />
       <SiteDrawer />
       <BooksDrawer />
+      <BillDrawer />
+      <PaymentDrawer />
       <Toaster
         position="top-center"
         toastOptions={{
