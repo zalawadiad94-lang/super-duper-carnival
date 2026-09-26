@@ -9,8 +9,12 @@
         <package android:name="com.whatsapp.w4b" />
     </queries>
 
+    <!-- Phone <-> PC sync over the Wi-Fi. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <application
         android:allowBackup="true"
+        android:usesCleartextTraffic="true"
         android:icon="@drawable/ic_launcher"
         android:label="@string/app_name"
         android:supportsRtl="true"

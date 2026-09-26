@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Drawer } from "vaul";
 import { toast } from "sonner";
-import { Contact, Download, Upload } from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import { ChevronRight, Contact, Download, MonitorSmartphone, Upload } from "lucide-react";
 import { Button, ConfirmDialog, Field, SelectInput, TextArea, TextInput } from "@/components/ui";
 import { canPickContact, pickContact } from "@/lib/contacts";
 import { todayISO, parseAmount } from "@/lib/format";
@@ -15,6 +16,7 @@ import {
   type SiteStatus,
 } from "@/lib/model";
 import { useLedger, useUi } from "@/lib/store";
+import { useSync } from "@/lib/sync";
 
 function useWideScreen() {
   const [wide, setWide] = useState(false);
@@ -585,6 +587,7 @@ export function BooksDrawer() {
   const [name, setName] = useState(businessName);
   const [confirmClear, setConfirmClear] = useState(false);
   const [confirmSample, setConfirmSample] = useState(false);
+  const syncing = useSync((state) => state.role !== "none");
 
   useEffect(() => {
     if (open) setName(businessName);
@@ -626,8 +629,26 @@ export function BooksDrawer() {
         open={open}
         onOpenChange={setOpen}
         title="Your books"
-        lede="Saved on this phone or computer only. Export a backup before you clear the browser."
+        lede={
+          syncing
+            ? "Synced between your phone and PC. Export a backup now and then."
+            : "Saved on this device. Connect your phone and PC to keep both up to date."
+        }
       >
+        <Link
+          to="/connect"
+          onClick={() => setOpen(false)}
+          className="mb-4 flex items-center justify-between gap-3 rounded-2xl bg-header px-4 py-3 text-bg"
+        >
+          <span className="flex items-center gap-3">
+            <MonitorSmartphone className="size-6" aria-hidden="true" />
+            <span>
+              <span className="block text-sm font-semibold">Phone &amp; PC sync</span>
+              <span className="block text-xs text-bg/75">{syncing ? "Connected" : "Not connected"}</span>
+            </span>
+          </span>
+          <ChevronRight className="size-5" aria-hidden="true" />
+        </Link>
         <form
           className="flex flex-col gap-4"
           onSubmit={(event) => {
@@ -677,7 +698,7 @@ export function BooksDrawer() {
       <ConfirmDialog
         open={confirmSample}
         title="Replace with sample books?"
-        body="This overwrites the khata on this device with Aarav Constructions — a sample building contractor."
+        body={`This overwrites the khata with Aarav Constructions — a sample building contractor.${syncing ? " Your connected phone / PC gets it too." : ""}`}
         confirmLabel="Load sample"
         onOpenChange={setConfirmSample}
         onConfirm={() => {
@@ -690,7 +711,7 @@ export function BooksDrawer() {
       <ConfirmDialog
         open={confirmClear}
         title="Clear the whole khata?"
-        body="Parties, sites, and entries on this device will be removed. Export a backup first if you need them."
+        body={`Parties, sites, bills and entries will be removed${syncing ? " — on your connected phone and PC too" : ""}. Export a backup first if you need them.`}
         confirmLabel="Clear books"
         danger
         onOpenChange={setConfirmClear}

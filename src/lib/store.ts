@@ -13,6 +13,15 @@ import {
 } from "@/lib/bills";
 import type { StockAdjustment } from "@/lib/stock";
 import {
+  COLLECTIONS,
+  emptyMeta,
+  normalizeMeta,
+  trackChanges,
+  type SyncData,
+  type SyncDoc,
+  type SyncMeta,
+} from "@/lib/sync-merge";
+import {
   parseBooks,
   sampleBooks,
   type Books,
@@ -66,6 +75,8 @@ export type PaymentInput = { amount: number; date: string };
 
 type LedgerState = Books & {
   hydrated: boolean;
+  /** Change times for phone ↔ PC sync (see sync-merge.ts). */
+  syncMeta: SyncMeta;
   setBusinessName: (name: string) => void;
   dismissSample: () => void;
   addParty: (input: PartyInput) => string;
@@ -172,6 +183,7 @@ export const useLedger = create<LedgerState>()(
     (set) => ({
       ...sample,
       hydrated: false,
+      syncMeta: emptyMeta(),
       setBusinessName: (name) => set({ businessName: name.trim() || "My Construction Co." }),
       dismissSample: () => set({ showSampleHint: false }),
       addParty: (input) => {
@@ -441,10 +453,54 @@ export const useLedger = create<LedgerState>()(
         items: state.items,
         stockAdjustments: state.stockAdjustments,
         showSampleHint: state.showSampleHint,
+        syncMeta: state.syncMeta,
       }),
     },
   ),
 );
+
+/** While true, store changes are not stamped (loading saved books, applying synced ones). */
+let trackingPaused = false;
+
+function syncData(state: LedgerState): SyncData {
+  return {
+    businessName: state.businessName,
+    parties: state.parties,
+    sites: state.sites,
+    entries: state.entries,
+    bills: state.bills,
+    items: state.items,
+    stockAdjustments: state.stockAdjustments,
+  };
+}
+
+// Stamp every change to the books so it can be synced. Only once the saved
+// books have loaded: loading them is not an edit.
+useLedger.subscribe((state, prev) => {
+  if (trackingPaused || !state.hydrated || !prev.hydrated) return;
+  const meta = trackChanges(syncData(prev), syncData(state), state.syncMeta, Date.now());
+  if (meta) useLedger.setState({ syncMeta: meta });
+});
+
+/** The books as a sync document. */
+export function getSyncDoc(): SyncDoc {
+  const state = useLedger.getState();
+  return { v: 1, data: syncData(state), meta: normalizeMeta(state.syncMeta) };
+}
+
+/** Replace the books with a (merged) sync document, without stamping it as new edits. */
+export function applySyncDoc(doc: SyncDoc) {
+  trackingPaused = true;
+  try {
+    const patch: Partial<LedgerState> = { businessName: doc.data.businessName, syncMeta: normalizeMeta(doc.meta) };
+    for (const coll of COLLECTIONS) {
+      (patch as Record<string, unknown>)[coll] = doc.data[coll];
+    }
+    useLedger.setState({ ...patch, showSampleHint: false });
+  } finally {
+    trackingPaused = false;
+  }
+}
 
 type AddState = {
   open: boolean;

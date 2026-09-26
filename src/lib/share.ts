@@ -42,6 +42,23 @@ function dataUrlToFile(dataUrl: string, fileName: string) {
   return new File([bytes], fileName, { type: mime });
 }
 
+/** Put the picture on the clipboard as PNG (what browsers can copy). */
+async function copyImage(dataUrl: string) {
+  try {
+    const bitmap = await createImageBitmap(await (await fetch(dataUrl)).blob());
+    const canvas = document.createElement("canvas");
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    canvas.getContext("2d")!.drawImage(bitmap, 0, 0);
+    const png = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+    if (!png) return false;
+    await navigator.clipboard.write([new ClipboardItem({ "image/png": png })]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function download(dataUrl: string, fileName: string) {
   const link = document.createElement("a");
   link.href = dataUrl;
@@ -61,8 +78,19 @@ export async function shareImage(
   caption: string,
   phone: string,
   whatsapp: boolean,
-): Promise<"shared" | "downloaded" | "cancelled"> {
+): Promise<"shared" | "downloaded" | "cancelled" | "copied"> {
   const native = nativeShare();
+  if (typeof window !== "undefined" && window.__SITEKHATA_DESKTOP__) {
+    // PC: copy the picture, then open the WhatsApp chat to paste it into.
+    const copied = await copyImage(dataUrl);
+    if (whatsapp) {
+      const num = hasPhone(phone) ? intlDigits(phone) : "";
+      await fetch("/api/open", { method: "POST", body: JSON.stringify({ url: `https://wa.me/${num}` }) }).catch(() => undefined);
+    }
+    if (copied) return "copied";
+    download(dataUrl, fileName);
+    return "downloaded";
+  }
   if (native?.shareImage) {
     native.shareImage(dataUrlParts(dataUrl).base64, fileName, caption, hasPhone(phone) ? intlDigits(phone) : "", whatsapp);
     return "shared";

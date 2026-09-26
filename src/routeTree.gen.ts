@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as BillsRouteImport } from './routes/bills'
+import { Route as ConnectRouteImport } from './routes/connect'
 import { Route as PartiesRouteImport } from './routes/parties'
 import { Route as ReportsRouteImport } from './routes/reports'
 import { Route as SitesRouteImport } from './routes/sites'
@@ -26,6 +27,11 @@ const IndexRoute = IndexRouteImport.update({
 const BillsRoute = BillsRouteImport.update({
   id: '/bills',
   path: '/bills',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ConnectRoute = ConnectRouteImport.update({
+  id: '/connect',
+  path: '/connect',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PartiesRoute = PartiesRouteImport.update({
@@ -62,6 +68,7 @@ const SiteSiteIdRoute = SiteSiteIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/bills': typeof BillsRoute
+  '/connect': typeof ConnectRoute
   '/parties': typeof PartiesRoute
   '/reports': typeof ReportsRoute
   '/sites': typeof SitesRoute
@@ -72,6 +79,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/bills': typeof BillsRoute
+  '/connect': typeof ConnectRoute
   '/parties': typeof PartiesRoute
   '/reports': typeof ReportsRoute
   '/sites': typeof SitesRoute
@@ -83,6 +91,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/bills': typeof BillsRoute
+  '/connect': typeof ConnectRoute
   '/parties': typeof PartiesRoute
   '/reports': typeof ReportsRoute
   '/sites': typeof SitesRoute
@@ -95,6 +104,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/bills'
+    | '/connect'
     | '/parties'
     | '/reports'
     | '/sites'
@@ -105,6 +115,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/bills'
+    | '/connect'
     | '/parties'
     | '/reports'
     | '/sites'
@@ -115,6 +126,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/bills'
+    | '/connect'
     | '/parties'
     | '/reports'
     | '/sites'
@@ -126,6 +138,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   BillsRoute: typeof BillsRoute
+  ConnectRoute: typeof ConnectRoute
   PartiesRoute: typeof PartiesRoute
   ReportsRoute: typeof ReportsRoute
   SitesRoute: typeof SitesRoute
@@ -148,6 +161,13 @@ declare module '@tanstack/react-router' {
       path: '/bills'
       fullPath: '/bills'
       preLoaderRoute: typeof BillsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/connect': {
+      id: '/connect'
+      path: '/connect'
+      fullPath: '/connect'
+      preLoaderRoute: typeof ConnectRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/parties': {
@@ -198,6 +218,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   BillsRoute: BillsRoute,
+  ConnectRoute: ConnectRoute,
   PartiesRoute: PartiesRoute,
   ReportsRoute: ReportsRoute,
   SitesRoute: SitesRoute,

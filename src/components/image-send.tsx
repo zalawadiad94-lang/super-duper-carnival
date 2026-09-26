@@ -28,6 +28,11 @@ export function ImageSendPanel({
     try {
       const how = await shareImage(image, fileName, "", phone, whatsapp);
       if (how === "downloaded") toast.success("Saved as JPG — attach it in WhatsApp");
+      if (how === "copied") {
+        toast.success(whatsapp ? "Picture copied. In the WhatsApp chat press Ctrl+V, then send." : "Picture copied — paste it anywhere with Ctrl+V.", {
+          duration: 8000,
+        });
+      }
     } finally {
       setBusy(false);
     }

@@ -13,6 +13,7 @@
     "build:dev": "node scripts/with-app-env.mjs vite build --mode development",
     "build:apk-web": "vite build --config apk/vite.config.ts",
     "build:apk": "bash scripts/build-apk.sh",
+    "build:exe": "bash scripts/build-exe.sh",
     "preview": "node scripts/with-app-env.mjs vite preview",
     "preview:restart": "node scripts/preview.mjs restart",
     "preview:stop": "node scripts/preview.mjs stop",

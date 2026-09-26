@@ -1,6 +1,16 @@
 import { useEffect, type ReactNode } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
-import { BarChart3, BookOpen, Building2, Home, Plus, ReceiptText, Users } from "lucide-react";
+import {
+  BarChart3,
+  BookOpen,
+  Building2,
+  Home,
+  Laptop,
+  Plus,
+  ReceiptText,
+  Smartphone,
+  Users,
+} from "lucide-react";
 import { Toaster } from "sonner";
 import { BillDrawer, PaymentDrawer } from "@/components/bill-drawers";
 import { ItemDrawer } from "@/components/items";
@@ -8,6 +18,7 @@ import { StockDrawer } from "@/components/stock";
 import { BooksDrawer, EntryDrawer, PartyDrawer, SiteDrawer } from "@/components/drawers";
 import { InstallPcBar } from "@/components/install-pc";
 import { cn } from "@/lib/cn";
+import { startSync, useSync } from "@/lib/sync";
 import { useLedger, useUi } from "@/lib/store";
 
 const NAV = [
@@ -30,6 +41,53 @@ function typingTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) return false;
   const tag = target.tagName;
   return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target.isContentEditable;
+}
+
+/** Header chip: sync state, links to Phone & PC sync. Hidden until connected. */
+function SyncBadge() {
+  const role = useSync((state) => state.role);
+  const status = useSync((state) => state.status);
+  if (role === "none") return null;
+  const good = status === "ok" || status === "syncing";
+  return (
+    <Link
+      to="/connect"
+      aria-label={`Sync: ${status}`}
+      className={cn(
+        "ml-auto mr-2 flex h-9 items-center gap-1.5 rounded-full px-3 text-xs font-semibold",
+        good ? "bg-surface/15 text-bg" : "bg-give text-bg",
+      )}
+    >
+      {role === "hub" ? (
+        <Laptop className="size-4" aria-hidden="true" />
+      ) : (
+        <Smartphone className="size-4" aria-hidden="true" />
+      )}
+      {status === "syncing" ? "Syncing" : good ? "Synced" : "Offline"}
+    </Link>
+  );
+}
+
+/** Wide screens (the PC): always-visible link to Phone & PC sync with its state. */
+function DesktopSyncLink() {
+  const role = useSync((state) => state.role);
+  const status = useSync((state) => state.status);
+  const good = status === "ok" || status === "syncing";
+  return (
+    <Link
+      to="/connect"
+      className="flex h-11 items-center gap-2 rounded-xl border border-line px-4 text-sm font-semibold text-ink"
+    >
+      <span
+        className={cn(
+          "size-2.5 rounded-full",
+          role === "none" ? "bg-line" : good ? "bg-get" : "bg-give",
+        )}
+        aria-hidden="true"
+      />
+      {role === "hub" ? "Phone sync" : "Phone & PC sync"}
+    </Link>
+  );
 }
 
 function KhataSkeleton() {
@@ -79,6 +137,10 @@ export function AppShell({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [openAdd]);
 
+  useEffect(() => {
+    if (hydrated) startSync();
+  }, [hydrated]);
+
   if (!hydrated) return <KhataSkeleton />;
 
   return (
@@ -126,10 +188,15 @@ export function AppShell({ children }: { children: ReactNode }) {
           <header className="bg-header flex items-center justify-between gap-3 px-4 py-3 text-bg shadow-md lg:hidden">
             <div className="min-w-0">
               <p className="font-display text-2xl leading-none">Sitekhata</p>
-              <button type="button" onClick={() => setBooksOpen(true)} className="mt-1 max-w-full truncate text-left text-xs text-bg/80">
+              <button
+                type="button"
+                onClick={() => setBooksOpen(true)}
+                className="mt-1 max-w-full truncate text-left text-xs text-bg/80"
+              >
                 {businessName}
               </button>
             </div>
+            <SyncBadge />
             <button
               type="button"
               onClick={() => openAdd()}
@@ -145,19 +212,24 @@ export function AppShell({ children }: { children: ReactNode }) {
               <p className="text-xs font-semibold uppercase tracking-wide text-muted">Firm</p>
               <p className="truncate font-display text-xl leading-tight">{businessName}</p>
             </button>
-            <button
-              type="button"
-              onClick={() => openAdd()}
-              className="flex h-11 items-center gap-3 rounded-xl bg-brass px-4 text-sm font-semibold text-bg"
-            >
-              <Plus className="size-4" aria-hidden="true" />
-              Add entry
-              <kbd className="rounded-md bg-ink/15 px-1.5 py-0.5 text-xs font-semibold">N</kbd>
-            </button>
+            <div className="flex items-center gap-3">
+              <DesktopSyncLink />
+              <button
+                type="button"
+                onClick={() => openAdd()}
+                className="flex h-11 items-center gap-3 rounded-xl bg-brass px-4 text-sm font-semibold text-bg"
+              >
+                <Plus className="size-4" aria-hidden="true" />
+                Add entry
+                <kbd className="rounded-md bg-ink/15 px-1.5 py-0.5 text-xs font-semibold">N</kbd>
+              </button>
+            </div>
           </div>
           <InstallPcBar />
 
-          <main className="min-h-0 flex-1 overflow-y-auto px-4 pb-28 pt-4 lg:px-8 lg:pb-8 lg:pt-6">{children}</main>
+          <main className="min-h-0 flex-1 overflow-y-auto px-4 pb-28 pt-4 lg:px-8 lg:pb-8 lg:pt-6">
+            {children}
+          </main>
         </div>
       </div>
 

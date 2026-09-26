@@ -4,10 +4,11 @@ import { RouterProvider } from "@tanstack/react-router";
 import "@fontsource-variable/outfit";
 import "@fontsource-variable/fraunces/opsz.css";
 import "./apk.css";
-import { installAndroidBridge } from "./android-bridge";
+import { installAndroidBridge, installDesktopLinks } from "./android-bridge";
 import { getRouter } from "@/router";
 
 installAndroidBridge();
+installDesktopLinks();
 
 const router = getRouter();
 

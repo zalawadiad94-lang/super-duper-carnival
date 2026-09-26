@@ -24,8 +24,13 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.ByteArrayOutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.util.Iterator;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
+import org.json.JSONException;
 import org.json.JSONObject;
 
 /**
@@ -145,6 +150,70 @@ public class MainActivity extends Activity {
 
     /** Methods the web app calls as window.SitekhataAndroid.*. */
     private class Bridge {
+        /**
+         * HTTP for phone <-> PC sync (the PC is http://<ip>:47615 on the Wi-Fi,
+         * which the https page itself may not call). Answers through
+         * window.__sitekhataHttp(id, status, body); status 0 = not reachable.
+         */
+        @JavascriptInterface
+        public void http(
+                final String method, final String url, final String headersJson, final String body, final int callbackId) {
+            new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    int status = 0;
+                    String text = "";
+                    HttpURLConnection conn = null;
+                    try {
+                        if (!url.startsWith("http://") && !url.startsWith("https://")) throw new IOException("bad url");
+                        conn = (HttpURLConnection) new URL(url).openConnection();
+                        conn.setConnectTimeout(6000);
+                        conn.setReadTimeout(10000);
+                        conn.setRequestMethod(method);
+                        conn.setUseCaches(false);
+                        JSONObject headers = new JSONObject(headersJson == null || headersJson.isEmpty() ? "{}" : headersJson);
+                        Iterator<String> keys = headers.keys();
+                        while (keys.hasNext()) {
+                            String key = keys.next();
+                            conn.setRequestProperty(key, headers.getString(key));
+                        }
+                        if (body != null && !body.isEmpty()) {
+                            byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+                            conn.setDoOutput(true);
+                            conn.setRequestProperty("Content-Type", "application/json");
+                            conn.setFixedLengthStreamingMode(bytes.length);
+                            try (OutputStream out = conn.getOutputStream()) {
+                                out.write(bytes);
+                            }
+                        }
+                        status = conn.getResponseCode();
+                        InputStream in = status >= 400 ? conn.getErrorStream() : conn.getInputStream();
+                        if (in != null) {
+                            ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+                            byte[] chunk = new byte[8192];
+                            int n;
+                            while ((n = in.read(chunk)) > 0) buffer.write(chunk, 0, n);
+                            in.close();
+                            text = new String(buffer.toByteArray(), StandardCharsets.UTF_8);
+                        }
+                    } catch (IOException | JSONException | RuntimeException e) {
+                        status = 0;
+                        text = "";
+                    } finally {
+                        if (conn != null) conn.disconnect();
+                    }
+                    final String js = "window.__sitekhataHttp && window.__sitekhataHttp("
+                            + callbackId + "," + status + "," + JSONObject.quote(text) + ")";
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            webView.evaluateJavascript(js, null);
+                        }
+                    });
+                }
+            }).start();
+        }
+
         /** Opens the system contact picker; no contacts permission needed. */
         @JavascriptInterface
         public void pickContact() {
