@@ -36,6 +36,7 @@ const STATUS_TEXT: Record<SyncStatus, string> = {
   ok: "Up to date",
   offline: "PC not reachable",
   badkey: "Pairing code refused",
+  linked: "That PC is linked to another",
   error: "Sync problem",
 };
 
@@ -91,7 +92,7 @@ function HubView() {
     <div className="flex flex-col gap-4">
       <StatusCard />
       <div className="rounded-2xl bg-header p-5 text-bg">
-        <p className="text-xs font-semibold uppercase tracking-wide text-bg/70">On your phone, type</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-bg/70">On your phone or other PCs, type</p>
         <p className="mt-3 text-xs text-bg/70">PC address</p>
         {info?.addresses.length ? (
           info.addresses.map((address) => (
@@ -108,6 +109,7 @@ function HubView() {
       <ol className="list-decimal space-y-1 pl-5 text-sm text-muted">
         <li>Keep this PC and the phone on the same Wi-Fi (or the phone's hotspot).</li>
         <li>On the phone: Sitekhata → tap your firm name → Phone &amp; PC sync.</li>
+        <li>On another PC: Sitekhata → Phone sync → "Link this PC to a main PC".</li>
         <li>Type the address and code above, then Connect.</li>
         <li>If Windows asks about network access, choose Allow.</li>
       </ol>
@@ -116,8 +118,8 @@ function HubView() {
         <div className="mt-2 overflow-hidden rounded-2xl border border-line bg-surface">
           {info?.devices.length ? (
             info.devices.map((device) => (
-              <div key={`${device.name}-${device.ip}`} className="flex items-center gap-3 border-b border-line px-4 py-3 last:border-b-0">
-                {device.name === "PC" ? <Laptop className="size-5 text-brass" /> : <Smartphone className="size-5 text-brass" />}
+              <div key={device.id} className="flex items-center gap-3 border-b border-line px-4 py-3 last:border-b-0">
+                {device.name.startsWith("PC") ? <Laptop className="size-5 text-brass" /> : <Smartphone className="size-5 text-brass" />}
                 <span className="min-w-0 flex-1">
                   <span className="block font-medium">{device.ip === "127.0.0.1" ? "This PC" : device.name}</span>
                   <span className="text-xs text-muted">{device.ip === "127.0.0.1" ? "Sitekhata window" : device.ip}</span>
@@ -126,7 +128,7 @@ function HubView() {
               </div>
             ))
           ) : (
-            <p className="px-4 py-3 text-sm text-muted">No phone has synced yet.</p>
+            <p className="px-4 py-3 text-sm text-muted">No phone or other PC has synced yet.</p>
           )}
         </div>
       </div>
@@ -134,9 +136,11 @@ function HubView() {
   );
 }
 
-/** On the phone: connect to the PC. */
+/** On a phone, or a PC linking to the main PC: connect to the (main) PC. */
 function ClientView() {
   const { role, settings } = useSync();
+  const here = isDesktop() ? "PC" : "phone";
+  const target = isDesktop() ? "main PC" : "PC";
   const [address, setAddress] = useState(settings.address);
   const [key, setKey] = useState("");
   const [busy, setBusy] = useState(false);
@@ -182,19 +186,19 @@ function ClientView() {
           Sync now
         </Button>
         <p className="text-sm text-muted">
-          Changes on this phone and on the PC are synced automatically whenever both are on the same Wi-Fi and
-          Sitekhata is open on the PC. Away from it, keep working — it catches up next time.
+          Changes on this {here} and on the {target} are synced automatically whenever both are on the same
+          network and Sitekhata is open on the {target}. Otherwise keep working — it catches up next time.
         </p>
         <Button
           variant="ghost"
           className="border border-line"
           onClick={() => {
             disconnectPc();
-            toast.success("Disconnected. Your books stay on this phone.");
+            toast.success(`Disconnected. Your books stay on this ${here}.`);
           }}
         >
           <Unplug className="size-4" aria-hidden="true" />
-          Disconnect from PC
+          Disconnect from {target}
         </Button>
       </div>
     );
@@ -203,15 +207,17 @@ function ClientView() {
   if (choice) {
     return (
       <div className="flex flex-col gap-3">
-        <p className="font-semibold">Both this phone and {choice.pcName} already have books.</p>
+        <p className="font-semibold">Both this {here} and {choice.pcName} already have books.</p>
         <button
           type="button"
           disabled={busy}
           onClick={() => void choose("pc")}
           className="rounded-2xl border-2 border-brass bg-brass-soft p-4 text-left"
         >
-          <span className="block font-semibold text-brass">Use the PC's books on this phone</span>
-          <span className="text-sm text-muted">This phone's books are replaced by the PC's. Best if you started on the PC.</span>
+          <span className="block font-semibold text-brass">Use the {target}'s books on this {here}</span>
+          <span className="text-sm text-muted">
+            This {here}'s books are replaced by the {target}'s. Best if you started on the {target}.
+          </span>
         </button>
         <button
           type="button"
@@ -220,7 +226,7 @@ function ClientView() {
           className="rounded-2xl border border-line bg-surface p-4 text-left"
         >
           <span className="block font-semibold">Combine both</span>
-          <span className="text-sm text-muted">Everything from the phone and the PC is kept, on both.</span>
+          <span className="text-sm text-muted">Everything from this {here} and the {target} is kept, on both.</span>
         </button>
         <Button variant="ghost" onClick={() => setChoice(null)}>
           Cancel
@@ -232,10 +238,11 @@ function ClientView() {
   return (
     <form onSubmit={(event) => void onConnect(event)} className="flex flex-col gap-4">
       <div className="rounded-2xl border border-line bg-surface p-4 text-sm text-muted">
-        <p className="font-semibold text-ink">First, on the PC</p>
-        Open Sitekhata on the PC → firm name → Phone &amp; PC sync. It shows the PC address and a pairing code.
+        <p className="font-semibold text-ink">First, on the {target}</p>
+        Open Sitekhata on the {target} → Phone sync (or firm name → Phone &amp; PC sync). It shows its address and a
+        pairing code.
       </div>
-      <Field label="PC address">
+      <Field label={isDesktop() ? "Main PC address" : "PC address"}>
         <TextInput
           value={address}
           onChange={(event) => setAddress(event.target.value)}
@@ -264,6 +271,8 @@ function ClientView() {
 
 function ConnectPage() {
   const desktop = isDesktop();
+  const role = useSync((state) => state.role);
+  const [linking, setLinking] = useState(false);
   return (
     <div className="mx-auto max-w-xl pb-16">
       <Link to="/" className="mb-3 inline-flex items-center gap-1 text-sm font-semibold text-muted">
@@ -273,12 +282,37 @@ function ConnectPage() {
       <PageIntro
         title="Phone & PC sync"
         lede={
-          desktop
-            ? "This PC keeps the master copy of your books. Connect your phone to it."
-            : "Keep this phone and Sitekhata on your PC in step."
+          !desktop
+            ? "Keep this phone and Sitekhata on your PC in step."
+            : role === "client"
+              ? "This PC is linked to your main PC. Phones and other PCs connect to the main PC."
+              : "This is the main PC: it keeps the master copy of your books. Connect phones and other PCs to it."
         }
       />
-      {desktop ? <HubView /> : <ClientView />}
+      {!desktop || role === "client" ? (
+        <ClientView />
+      ) : (
+        <>
+          <HubView />
+          <div className="mt-6 rounded-2xl border border-line bg-surface p-4">
+            <p className="font-semibold">Is another PC your main PC?</p>
+            <p className="mt-1 text-sm text-muted">
+              Link this PC to it, and this PC syncs with it like a phone does — any number of PCs and phones can share
+              one set of books.
+            </p>
+            {linking ? (
+              <div className="mt-4">
+                <ClientView />
+              </div>
+            ) : (
+              <Button variant="soft" className="mt-3 w-full" onClick={() => setLinking(true)}>
+                <Laptop className="size-4" aria-hidden="true" />
+                Link this PC to a main PC
+              </Button>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }

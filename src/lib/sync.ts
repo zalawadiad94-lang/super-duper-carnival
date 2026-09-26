@@ -38,7 +38,12 @@ function nativeHttp() {
 }
 
 /** HTTP that works from the Android app (through Java, so plain http on the Wi-Fi is allowed) and browsers. */
-async function httpRequest(method: string, url: string, headers: Record<string, string>, body?: string): Promise<HttpResult> {
+async function httpRequest(
+  method: string,
+  url: string,
+  headers: Record<string, string>,
+  body?: string,
+): Promise<HttpResult> {
   const native = nativeHttp();
   if (native?.http) {
     window.__sitekhataHttp ??= (id, status, text) => {
@@ -100,7 +105,8 @@ function loadSettings(): SyncSettings {
     address: saved.address ?? "",
     key: saved.key ?? "",
     pcName: saved.pcName ?? "",
-    deviceId: saved.deviceId ?? (typeof crypto !== "undefined" ? crypto.randomUUID() : String(Date.now())),
+    deviceId:
+      saved.deviceId ?? (typeof crypto !== "undefined" ? crypto.randomUUID() : String(Date.now())),
     deviceName: saved.deviceName ?? (isDesktop() ? "PC" : "Phone"),
     lastSync: saved.lastSync ?? null,
   };
@@ -121,7 +127,10 @@ export function isDesktop() {
 
 /** "192.168.1.5" → "http://192.168.1.5:47615" */
 export function hubUrl(address: string) {
-  let a = address.trim().replace(/^https?:\/\//i, "").replace(/\/+$/, "");
+  let a = address
+    .trim()
+    .replace(/^https?:\/\//i, "")
+    .replace(/\/+$/, "");
   if (!a) return "";
   if (!/:\d+$/.test(a)) a = `${a}:${HUB_PORT}`;
   return `http://${a}`;
@@ -130,7 +139,7 @@ export function hubUrl(address: string) {
 // ---------------------------------------------------------------------------
 // Engine state
 
-export type SyncStatus = "off" | "syncing" | "ok" | "offline" | "badkey" | "error";
+export type SyncStatus = "off" | "syncing" | "ok" | "offline" | "badkey" | "linked" | "error";
 
 type SyncState = {
   role: "hub" | "client" | "none";
@@ -161,10 +170,22 @@ function headers(key?: string): Record<string, string> {
 
 type Remote = { rev: number; doc: SyncDoc | null };
 
+/** Main PC address reported by a linked PC (for the error message). */
+let linkedTo = "";
+
 async function getRemote(url: string, key?: string): Promise<Remote | SyncStatus> {
   const res = await httpRequest("GET", `${url}/api/books`, headers(key));
   if (res.status === 0) return "offline";
   if (res.status === 401) return "badkey";
+  if (res.status === 421) {
+    // That PC is linked to a main PC now: remember where to go instead.
+    try {
+      linkedTo = (JSON.parse(res.body) as { main?: string }).main ?? "";
+    } catch {
+      linkedTo = "";
+    }
+    return "linked";
+  }
   if (res.status !== 200) return "error";
   try {
     return JSON.parse(res.body) as Remote;
@@ -173,8 +194,17 @@ async function getRemote(url: string, key?: string): Promise<Remote | SyncStatus
   }
 }
 
-async function putRemote(url: string, baseRev: number, doc: SyncDoc): Promise<{ rev: number } | "conflict" | SyncStatus> {
-  const res = await httpRequest("PUT", `${url}/api/books`, headers(), JSON.stringify({ baseRev, doc }));
+async function putRemote(
+  url: string,
+  baseRev: number,
+  doc: SyncDoc,
+): Promise<{ rev: number } | "conflict" | SyncStatus> {
+  const res = await httpRequest(
+    "PUT",
+    `${url}/api/books`,
+    headers(),
+    JSON.stringify({ baseRev, doc }),
+  );
   if (res.status === 0) return "offline";
   if (res.status === 401) return "badkey";
   if (res.status === 409) return "conflict";
@@ -237,9 +267,11 @@ export async function syncNow(): Promise<void> {
           ? "Can't reach the PC. Is Sitekhata open on the PC, on the same Wi-Fi?"
           : result === "badkey"
             ? "The PC refused the pairing code. Connect again with the code shown on the PC."
-            : result === "error"
-              ? "Sync failed. It will try again."
-              : "",
+            : result === "linked"
+              ? `That PC is now linked to the main PC${linkedTo ? ` (${linkedTo})` : ""}. Disconnect, then connect to the main PC.`
+              : result === "error"
+                ? "Sync failed. It will try again."
+                : "",
     });
   } finally {
     running = false;
@@ -257,7 +289,17 @@ export function startSync() {
   if (started || typeof window === "undefined") return;
   started = true;
   const settings = loadSettings();
-  const role = isDesktop() ? "hub" : settings.address ? "client" : "none";
+  // A PC linked to a main PC syncs like a phone; otherwise a PC is the main one.
+  const role = settings.address ? "client" : isDesktop() ? "hub" : "none";
+  if (isDesktop()) {
+    // Name this PC after the computer, so the main PC's device list says which.
+    void hubInfo().then((info) => {
+      if (!info) return;
+      const next = { ...useSync.getState().settings, deviceName: `PC (${info.name})` };
+      saveSettings(next);
+      useSync.setState({ settings: next });
+    });
+  }
   useSync.setState({ role, settings, status: role === "none" ? "off" : "syncing" });
   saveSettings(settings);
 
@@ -278,7 +320,10 @@ export function startSync() {
 /** The sample books, still showing and never edited. */
 function untouchedSample() {
   const state = useLedger.getState();
-  return state.showSampleHint && COLLECTIONS.every((coll) => Object.keys(state.syncMeta.updated[coll] ?? {}).length === 0);
+  return (
+    state.showSampleHint &&
+    COLLECTIONS.every((coll) => Object.keys(state.syncMeta.updated[coll] ?? {}).length === 0)
+  );
 }
 
 function hasBooks(doc: SyncDoc | null) {
@@ -295,19 +340,39 @@ export async function checkPc(address: string, key: string): Promise<PairCheck> 
   if (!url) return { ok: false, message: "Type the PC address shown in Sitekhata on the PC." };
   const hello = await httpRequest("GET", `${url}/api/hello`, {});
   if (hello.status === 0) {
-    return { ok: false, message: "Can't reach the PC. Open Sitekhata on the PC and check both are on the same Wi-Fi." };
+    return {
+      ok: false,
+      message: "Can't reach the PC. Open Sitekhata on the PC and check both are on the same Wi-Fi.",
+    };
   }
   let pcName = "PC";
+  let main = "";
   try {
-    const info = JSON.parse(hello.body) as { app?: string; name?: string };
+    const info = JSON.parse(hello.body) as { app?: string; name?: string; main?: string };
     if (info.app !== "sitekhata") throw new Error();
     pcName = info.name || "PC";
+    main = info.main ?? "";
   } catch {
     return { ok: false, message: "That address is not Sitekhata on a PC." };
   }
+  if (main) {
+    return {
+      ok: false,
+      message: `${pcName} is linked to the main PC (${main}). Connect to the main PC instead.`,
+    };
+  }
+  if (isDesktop()) {
+    const own = await hubInfo();
+    const host = url.replace(/^http:\/\//, "").replace(/:\d+$/, "");
+    if (["127.0.0.1", "localhost"].includes(host) || own?.addresses.includes(host)) {
+      return { ok: false, message: "That's this PC. Type the address shown on the main PC." };
+    }
+  }
   const remote = await getRemote(url, key.trim());
-  if (remote === "badkey") return { ok: false, message: "Wrong pairing code. Check the code on the PC." };
-  if (typeof remote === "string") return { ok: false, message: "The PC didn't answer properly. Try again." };
+  if (remote === "badkey")
+    return { ok: false, message: "Wrong pairing code. Check the code on the PC." };
+  if (typeof remote === "string")
+    return { ok: false, message: "The PC didn't answer properly. Try again." };
   const state = useLedger.getState();
   const phoneHasBooks = !state.showSampleHint && hasBooks(getSyncDoc());
   return { ok: true, pcName, pcHasBooks: hasBooks(remote.doc), phoneHasBooks };
@@ -317,10 +382,21 @@ export async function checkPc(address: string, key: string): Promise<PairCheck> 
  * Pair with the PC. "pc": replace this device's books with the PC's.
  * "combine": merge both (nothing is lost).
  */
-export async function connectPc(address: string, key: string, pcName: string, how: "pc" | "combine") {
-  const settings: SyncSettings = { ...useSync.getState().settings, address: address.trim(), key: key.trim(), pcName };
+export async function connectPc(
+  address: string,
+  key: string,
+  pcName: string,
+  how: "pc" | "combine",
+) {
+  const settings: SyncSettings = {
+    ...useSync.getState().settings,
+    address: address.trim(),
+    key: key.trim(),
+    pcName,
+  };
   saveSettings(settings);
   useSync.setState({ role: "client", settings });
+  if (isDesktop()) await setServerMain(settings.address);
   if (how === "pc") {
     const remote = await getRemote(hubUrl(settings.address));
     if (typeof remote !== "string" && remote.doc) applySyncDoc(remote.doc);
@@ -329,9 +405,26 @@ export async function connectPc(address: string, key: string, pcName: string, ho
 }
 
 export function disconnectPc() {
-  const settings: SyncSettings = { ...useSync.getState().settings, address: "", key: "", pcName: "", lastSync: null };
+  const settings: SyncSettings = {
+    ...useSync.getState().settings,
+    address: "",
+    key: "",
+    pcName: "",
+    lastSync: null,
+  };
   saveSettings(settings);
+  if (isDesktop()) {
+    // Back to being a main PC: phones can connect to this one again.
+    useSync.setState({ role: "hub", status: "syncing", message: "", settings });
+    void setServerMain("").then(() => syncNow());
+    return;
+  }
   useSync.setState({ role: "none", status: "off", message: "", settings });
+}
+
+/** PC only: tell this PC's server whether it is linked to a main PC. */
+async function setServerMain(address: string) {
+  await httpRequest("POST", "/api/role", {}, JSON.stringify({ main: address }));
 }
 
 /** PC only: pairing details and the devices that synced. */
@@ -340,7 +433,8 @@ export type HubInfo = {
   name: string;
   port: number;
   addresses: string[];
-  devices: { name: string; ip: string; lastSeen: number }[];
+  devices: { id: string; name: string; ip: string; lastSeen: number }[];
+  main: string;
 };
 
 export async function hubInfo(): Promise<HubInfo | null> {

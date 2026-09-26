@@ -61,6 +61,12 @@ keeps working and catches up later. Each record keeps its newest change;
 deletions sync too (`src/lib/sync-merge.ts`, engine in `src/lib/sync.ts`,
 server in `desktop/main.go`).
 
+**More PCs:** any number of phones and PCs can share one set of books. Pick
+one PC as the *main PC* (the one that stays on most). On each other PC: Phone
+sync → "Link this PC to a main PC" → type the main PC's address and code. A
+linked PC syncs like a phone; phones should connect to the main PC (a linked
+PC tells them where it is). "Disconnect from main PC" makes it a main PC again.
+
 Rebuild: `npm run build:exe` (needs Go 1.22+; cross-compiles from Linux or
 macOS). Windows SmartScreen warns about unsigned apps: *More info → Run
 anyway*.

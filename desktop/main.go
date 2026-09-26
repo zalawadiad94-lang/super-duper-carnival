@@ -28,29 +28,35 @@ import (
 	"path"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 )
 
-const (
-	port    = 47615
-	version = "2.8"
-)
+const version = "2.9"
+
+// port the app listens on (all interfaces). SITEKHATA_PORT overrides it,
+// e.g. to run two PCs' worth of Sitekhata on one machine for testing.
+var port = 47615
 
 //go:embed all:web
 var webFiles embed.FS
 
 type store struct {
-	mu      sync.Mutex
-	dir     string
-	key     string
+	mu  sync.Mutex
+	dir string
+	key string
+	// main is the main PC's address when this PC is linked to another one
+	// ("" = this PC is the main one, the hub phones connect to).
+	main    string
 	rev     int64
 	doc     json.RawMessage
 	devices map[string]device
 }
 
 type device struct {
+	ID       string `json:"id"`
 	Name     string `json:"name"`
 	IP       string `json:"ip"`
 	LastSeen int64  `json:"lastSeen"`
@@ -81,18 +87,15 @@ func newCode() string {
 
 func openStore(dir string) *store {
 	s := &store{dir: dir, devices: map[string]device{}}
-	var cfg struct {
-		Key string `json:"key"`
-	}
+	var cfg config
 	if raw, err := os.ReadFile(filepath.Join(dir, "config.json")); err == nil {
 		_ = json.Unmarshal(raw, &cfg)
 	}
-	if len(cfg.Key) != 6 {
-		cfg.Key = newCode()
-		raw, _ := json.Marshal(cfg)
-		_ = os.WriteFile(filepath.Join(dir, "config.json"), raw, 0o600)
+	s.key, s.main = cfg.Key, cfg.Main
+	if len(s.key) != 6 {
+		s.key = newCode()
+		s.saveConfig()
 	}
-	s.key = cfg.Key
 	if raw, err := os.ReadFile(filepath.Join(dir, "books.json")); err == nil {
 		var sv saved
 		if json.Unmarshal(raw, &sv) == nil {
@@ -100,6 +103,16 @@ func openStore(dir string) *store {
 		}
 	}
 	return s
+}
+
+type config struct {
+	Key  string `json:"key"`
+	Main string `json:"main,omitempty"`
+}
+
+func (s *store) saveConfig() {
+	raw, _ := json.Marshal(config{Key: s.key, Main: s.main})
+	_ = os.WriteFile(filepath.Join(s.dir, "config.json"), raw, 0o600)
 }
 
 // save writes books.json atomically and keeps one backup per day (last 30).
@@ -192,7 +205,10 @@ func (s *store) seen(r *http.Request) {
 	if len(name) > 40 {
 		name = name[:40]
 	}
-	s.devices[id] = device{Name: name, IP: host, LastSeen: time.Now().UnixMilli()}
+	if len(id) > 64 {
+		id = id[:64]
+	}
+	s.devices[id] = device{ID: id, Name: name, IP: host, LastSeen: time.Now().UnixMilli()}
 }
 
 func (s *store) handleBooks(w http.ResponseWriter, r *http.Request) {
@@ -202,6 +218,11 @@ func (s *store) handleBooks(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.main != "" && !isLoopback(r) {
+		// This PC is linked to a main PC: devices must sync with that one.
+		writeJSON(w, http.StatusMisdirectedRequest, map[string]string{"error": "linked", "main": s.main})
+		return
+	}
 	s.seen(r)
 	switch r.Method {
 	case http.MethodGet:
@@ -259,7 +280,29 @@ func (s *store) handlePairing(w http.ResponseWriter, r *http.Request) {
 		"port":      port,
 		"addresses": lanAddresses(),
 		"devices":   devices,
+		"main":      s.main,
 	})
+}
+
+// handleRole: the PC window says whether this PC is the main one or linked
+// to another PC (address in "main").
+func (s *store) handleRole(w http.ResponseWriter, r *http.Request) {
+	if !isLoopback(r) || r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+	var body struct {
+		Main string `json:"main"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<12)).Decode(&body); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	s.mu.Lock()
+	s.main = strings.TrimSpace(body.Main)
+	s.saveConfig()
+	s.mu.Unlock()
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func handleOpen(w http.ResponseWriter, r *http.Request) {
@@ -354,8 +397,12 @@ func newServer(s *store) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/hello", func(w http.ResponseWriter, r *http.Request) {
 		hostname, _ := os.Hostname()
-		writeJSON(w, http.StatusOK, map[string]string{"app": "sitekhata", "name": hostname, "version": version})
+		s.mu.Lock()
+		main := s.main
+		s.mu.Unlock()
+		writeJSON(w, http.StatusOK, map[string]string{"app": "sitekhata", "name": hostname, "version": version, "main": main})
 	})
+	mux.HandleFunc("/api/role", s.handleRole)
 	mux.HandleFunc("/api/books", s.handleBooks)
 	mux.HandleFunc("/api/pairing", s.handlePairing)
 	mux.HandleFunc("/api/open", handleOpen)
@@ -378,6 +425,9 @@ func alreadyRunning() bool {
 }
 
 func main() {
+	if p, err := strconv.Atoi(os.Getenv("SITEKHATA_PORT")); err == nil && p > 0 && p < 65536 {
+		port = p
+	}
 	dir := dataDir()
 	logFile, err := os.OpenFile(filepath.Join(dir, "sitekhata.log"), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 	if err == nil {
