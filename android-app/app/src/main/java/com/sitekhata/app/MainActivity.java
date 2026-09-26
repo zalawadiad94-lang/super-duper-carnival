@@ -1,0 +1,219 @@
+package com.sitekhata.app;
+
+import android.annotation.SuppressLint;
+import android.app.Activity;
+import android.content.Intent;
+import android.net.Uri;
+import android.os.Bundle;
+import android.webkit.JavascriptInterface;
+import android.webkit.ValueCallback;
+import android.webkit.WebChromeClient;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
+import android.webkit.WebSettings;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
+import android.widget.Toast;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.Collections;
+
+/**
+ * Hosts the Sitekhata web app (built into assets/www by apk/vite.config.ts) in a
+ * WebView. Files are served from a fixed https origin so localStorage — where
+ * the books are saved — stays put across app updates.
+ */
+public class MainActivity extends Activity {
+    private static final String HOST = "appassets.androidplatform.net";
+    private static final String START_URL = "https://" + HOST + "/";
+    private static final int REQUEST_SAVE_FILE = 1;
+    private static final int REQUEST_PICK_FILE = 2;
+
+    private WebView webView;
+    private ValueCallback<Uri[]> pendingFilePick;
+    private String pendingSaveContents;
+
+    @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        webView = new WebView(this);
+        setContentView(webView);
+
+        WebSettings settings = webView.getSettings();
+        settings.setJavaScriptEnabled(true);
+        settings.setDomStorageEnabled(true);
+        settings.setDatabaseEnabled(true);
+        settings.setAllowFileAccess(false);
+        settings.setAllowContentAccess(false);
+
+        webView.addJavascriptInterface(new Bridge(), "SitekhataAndroid");
+        webView.setWebViewClient(new AppWebViewClient());
+        webView.setWebChromeClient(new AppChromeClient());
+
+        if (savedInstanceState == null) {
+            webView.loadUrl(START_URL);
+        } else {
+            webView.restoreState(savedInstanceState);
+        }
+    }
+
+    @Override
+    protected void onSaveInstanceState(Bundle outState) {
+        super.onSaveInstanceState(outState);
+        webView.saveState(outState);
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (webView != null && webView.canGoBack()) {
+            webView.goBack();
+            return;
+        }
+        super.onBackPressed();
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQUEST_PICK_FILE) {
+            if (pendingFilePick != null) {
+                pendingFilePick.onReceiveValue(
+                        WebChromeClient.FileChooserParams.parseResult(resultCode, data));
+                pendingFilePick = null;
+            }
+        } else if (requestCode == REQUEST_SAVE_FILE) {
+            String contents = pendingSaveContents;
+            pendingSaveContents = null;
+            if (resultCode != RESULT_OK || data == null || data.getData() == null || contents == null) {
+                return;
+            }
+            try (OutputStream out = getContentResolver().openOutputStream(data.getData())) {
+                out.write(contents.getBytes(StandardCharsets.UTF_8));
+                Toast.makeText(this, "Backup saved", Toast.LENGTH_SHORT).show();
+            } catch (IOException | NullPointerException e) {
+                Toast.makeText(this, "Couldn't save the backup", Toast.LENGTH_LONG).show();
+            }
+        }
+    }
+
+    /** Called from apk/android-bridge.ts when the web app downloads a file. */
+    private class Bridge {
+        @JavascriptInterface
+        public void saveFile(final String fileName, final String mimeType, final String contents) {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    pendingSaveContents = contents;
+                    Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+                    intent.addCategory(Intent.CATEGORY_OPENABLE);
+                    intent.setType(mimeType);
+                    intent.putExtra(Intent.EXTRA_TITLE, fileName);
+                    startActivityForResult(intent, REQUEST_SAVE_FILE);
+                }
+            });
+        }
+    }
+
+    private class AppChromeClient extends WebChromeClient {
+        @Override
+        public boolean onShowFileChooser(
+                WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {
+            if (pendingFilePick != null) {
+                pendingFilePick.onReceiveValue(null);
+            }
+            pendingFilePick = callback;
+            Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            // Backups are JSON, but many file managers label them oddly; allow any.
+            intent.setType("*/*");
+            try {
+                startActivityForResult(intent, REQUEST_PICK_FILE);
+            } catch (RuntimeException e) {
+                pendingFilePick = null;
+                callback.onReceiveValue(null);
+                return false;
+            }
+            return true;
+        }
+    }
+
+    private class AppWebViewClient extends WebViewClient {
+        // API 24 overload (minSdk is 24). No @Override: scripts/build-apk.sh
+        // compiles against the API 23 stubs, which predate it.
+        public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+            Uri url = request.getUrl();
+            if (HOST.equals(url.getHost())) {
+                return false;
+            }
+            // tel:, WhatsApp and other outside links open in their own apps.
+            try {
+                startActivity(new Intent(Intent.ACTION_VIEW, url));
+            } catch (RuntimeException ignored) {
+                // No app can handle it.
+            }
+            return true;
+        }
+
+        @Override
+        public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+            Uri url = request.getUrl();
+            if (!HOST.equals(url.getHost())) {
+                return null;
+            }
+            String path = url.getPath() == null ? "" : url.getPath();
+            while (path.startsWith("/")) {
+                path = path.substring(1);
+            }
+            if (path.contains("..")) {
+                return notFound();
+            }
+            // Real files (JS, CSS, fonts) by path; every app route gets index.html.
+            if (!path.isEmpty() && path.lastIndexOf('.') > path.lastIndexOf('/')) {
+                InputStream asset = openAsset("www/" + path);
+                return asset == null ? notFound() : ok(mimeFor(path), asset);
+            }
+            InputStream index = openAsset("www/index.html");
+            return index == null ? notFound() : ok("text/html", index);
+        }
+    }
+
+    private InputStream openAsset(String name) {
+        try {
+            return getAssets().open(name);
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    private static WebResourceResponse ok(String mime, InputStream data) {
+        boolean text = mime.startsWith("text/") || mime.endsWith("javascript") || mime.endsWith("json")
+                || mime.endsWith("svg+xml");
+        return new WebResourceResponse(
+                mime, text ? "utf-8" : null, 200, "OK",
+                Collections.singletonMap("Cache-Control", "no-cache"), data);
+    }
+
+    private static WebResourceResponse notFound() {
+        return new WebResourceResponse("text/plain", "utf-8", 404, "Not Found",
+                Collections.<String, String>emptyMap(), null);
+    }
+
+    private static String mimeFor(String path) {
+        String p = path.toLowerCase();
+        if (p.endsWith(".html")) return "text/html";
+        if (p.endsWith(".js") || p.endsWith(".mjs")) return "text/javascript";
+        if (p.endsWith(".css")) return "text/css";
+        if (p.endsWith(".json")) return "application/json";
+        if (p.endsWith(".svg")) return "image/svg+xml";
+        if (p.endsWith(".png")) return "image/png";
+        if (p.endsWith(".jpg") || p.endsWith(".jpeg")) return "image/jpeg";
+        if (p.endsWith(".webp")) return "image/webp";
+        if (p.endsWith(".woff2")) return "font/woff2";
+        if (p.endsWith(".woff")) return "font/woff";
+        if (p.endsWith(".ico")) return "image/x-icon";
+        return "application/octet-stream";
+    }
+}

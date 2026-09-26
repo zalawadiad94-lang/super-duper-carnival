@@ -1,0 +1,13 @@
+node_modules
+dist/
+.vercel/
+.tanstack/
+.output/
+android-app/app/build/
+android-app/build/
+android-app/.gradle/
+apk-build/
+.grok/
+*.keystore
+android-app/app/src/main/assets/www/
+*.idsig

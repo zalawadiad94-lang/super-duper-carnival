@@ -1,0 +1,15 @@
+Install Sitekhata on this PC
+================================
+
+1. Unzip this folder anywhere (Downloads is fine).
+2. Double-click "Install Sitekhata.bat".
+3. If Windows asks, choose More info, then Run anyway.
+   This file only copies Sitekhata onto your PC and makes a shortcut.
+4. Sitekhata opens in its own window.
+   A shortcut named Sitekhata is placed on your desktop and in the Start menu.
+
+Your books stay on this computer, inside that window.
+From the firm name you can export a backup file.
+
+To remove it later: delete the Sitekhata shortcut, and delete the folder
+%LOCALAPPDATA%\Sitekhata

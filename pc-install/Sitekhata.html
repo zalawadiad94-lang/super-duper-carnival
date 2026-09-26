@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sitekhata</title>
+<style>
+  :root {
+    --bg: #f3efe7; --surface: #fffdf8; --ink: #1c2430; --muted: #5e574e;
+    --line: #e4d9cc; --brass: #8d4e12; --brass-soft: #f8ecd9;
+    --get: #176b45; --give: #9f2d24; --cream: #f3efe7;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); }
+  body { font: 15px/1.45 "Segoe UI", sans-serif; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  button:disabled { opacity: 0.5; cursor: default; }
+  h1, h2, .num { font-family: Palatino, "Palatino Linotype", Georgia, serif; font-weight: 600; }
+  .app { display: flex; height: 100vh; overflow: hidden; }
+  aside { width: 220px; background: var(--ink); color: var(--cream); display: flex; flex-direction: column; flex-shrink: 0; }
+  .brand { padding: 22px 18px 12px; }
+  .brand strong { font-family: Palatino, Georgia, serif; font-size: 26px; font-weight: 600; }
+  .brand p { margin: 6px 0 0; font-size: 13px; opacity: 0.8; }
+  nav { display: flex; flex-direction: column; gap: 4px; padding: 8px; }
+  nav button { height: 42px; border: 0; border-radius: 12px; background: transparent; color: inherit; text-align: left; padding: 0 12px; font-weight: 600; }
+  nav button.on { background: var(--brass); }
+  .firm { margin-top: auto; padding: 14px; }
+  .firm button { width: 100%; border: 0; background: transparent; color: inherit; text-align: left; opacity: 0.85; padding: 8px; }
+  .desk { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .top { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 28px; background: var(--surface); border-bottom: 1px solid var(--line); }
+  .top .who { border: 0; background: transparent; text-align: left; padding: 0; }
+  .top .who span { display: block; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+  .top .who strong { font-family: Palatino, Georgia, serif; font-size: 20px; }
+  .main { flex: 1; overflow: auto; padding: 22px 28px 40px; }
+  .row { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
+  .lede { color: var(--muted); margin: 4px 0 0; font-size: 14px; }
+  .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 16px 0; }
+  .tile { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 14px 16px; }
+  .tile.mark { border-top: 4px solid var(--brass); }
+  .tile p { margin: 0; color: var(--muted); font-size: 13px; }
+  .num { font-size: 28px; margin: 4px 0 0; letter-spacing: -0.02em; }
+  .get { color: var(--get); } .give { color: var(--give); } .muted { color: var(--muted); }
+  .split { display: grid; grid-template-columns: 1.3fr 1fr; gap: 16px; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { text-align: left; font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); background: var(--brass-soft); padding: 10px 12px; }
+  td { padding: 10px 12px; border-top: 1px solid var(--line); vertical-align: top; }
+  tr.click:hover td { background: var(--brass-soft); cursor: pointer; }
+  .right { text-align: right; }
+  .btn { height: 42px; border: 0; border-radius: 12px; padding: 0 16px; background: var(--brass); color: var(--cream); font-weight: 700; }
+  .btn.soft { background: var(--brass-soft); color: var(--brass); }
+  .btn.ghost { background: var(--surface); color: var(--ink); border: 1px solid var(--line); }
+  .btn.danger { background: #fdeceb; color: var(--give); }
+  .btn.navy { background: var(--ink); color: var(--cream); }
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; }
+  .chip { height: 36px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); padding: 0 14px; font-weight: 700; }
+  .chip.on { background: var(--ink); color: var(--cream); border-color: var(--ink); }
+  .search { height: 42px; border: 1px solid var(--line); border-radius: 12px; padding: 0 12px; background: var(--surface); min-width: 240px; }
+  .banner { background: var(--brass-soft); border: 1px solid var(--line); border-radius: 16px; padding: 14px 16px; margin-bottom: 16px; }
+  .khata { display: grid; grid-template-columns: 280px 1fr; gap: 18px; align-items: start; }
+  .balance { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 16px; }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .back { border: 0; background: transparent; color: var(--muted); font-weight: 700; padding: 0 0 8px; }
+  .mask { position: fixed; inset: 0; background: rgba(28, 36, 48, 0.45); display: flex; align-items: center; justify-content: center; padding: 24px; z-index: 20; }
+  .dialog { width: min(640px, 100%); max-height: 90vh; overflow: auto; background: var(--surface); border-radius: 18px; border: 1px solid var(--line); padding: 22px; }
+  label { display: flex; flex-direction: column; gap: 6px; font-size: 14px; font-weight: 650; margin-top: 12px; }
+  input, select, textarea { height: 42px; border: 1px solid var(--line); border-radius: 12px; padding: 0 12px; background: var(--surface); }
+  textarea { height: 76px; padding: 10px 12px; resize: vertical; }
+  .kinds { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+  .kinds button { text-align: left; border: 1px solid var(--line); background: var(--surface); border-radius: 12px; padding: 10px 12px; }
+  .kinds button.on { border-color: var(--brass); background: var(--brass-soft); }
+  .kinds small { display: block; color: var(--muted); font-weight: 500; }
+  .err { color: var(--give); font-size: 13px; }
+  .sites { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .site { display: block; width: 100%; text-align: left; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 16px; }
+  .site .tag { color: var(--brass); font-size: 11px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
+  kbd { background: rgba(28,36,48,0.12); border-radius: 6px; padding: 1px 6px; font-size: 12px; }
+  @media (max-width: 980px) {
+    .tiles, .split, .khata, .sites { grid-template-columns: 1fr; }
+    aside { display: none; }
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+const KEY = "sitekhata-pc-v1";
+const ROLES = {
+  client: { label: "Client", hint: "Pays you for the work" },
+  supplier: { label: "Supplier", hint: "Cement, steel, sand" },
+  labour: { label: "Labour", hint: "Mistry, mazdoor, gang" },
+  subcontractor: { label: "Subcontractor", hint: "Plumbing, JCB, electrical" }
+};
+const KINDS = {
+  bill: { label: "Bill raised", dir: "gave", cash: false, hint: "Work billed. They owe you.", roles: ["client"] },
+  receipt: { label: "Payment in", dir: "got", cash: true, hint: "Cash or NEFT received.", roles: ["client"] },
+  purchase: { label: "Material on credit", dir: "got", cash: false, hint: "Goods taken. You owe them.", roles: ["supplier"] },
+  supplier_paid: { label: "Paid supplier", dir: "gave", cash: true, hint: "Cash paid to supplier.", roles: ["supplier"] },
+  wages_due: { label: "Wages due", dir: "got", cash: false, hint: "Work done, not paid yet.", roles: ["labour"] },
+  wages_paid: { label: "Wages paid", dir: "gave", cash: true, hint: "Cash paid to labour.", roles: ["labour"] },
+  advance: { label: "Advance given", dir: "gave", cash: true, hint: "Cash given early.", roles: ["supplier", "labour", "subcontractor"] },
+  sub_bill: { label: "Their bill", dir: "got", cash: false, hint: "Subcontractor invoice.", roles: ["subcontractor"] },
+  sub_paid: { label: "Paid subcontractor", dir: "gave", cash: true, hint: "Cash paid out.", roles: ["subcontractor"] },
+  gave: { label: "You gave", dir: "gave", cash: true, hint: "Any other amount you gave.", roles: ["client", "supplier", "labour", "subcontractor"] },
+  got: { label: "You got", dir: "got", cash: true, hint: "Any other amount you got.", roles: ["client", "supplier", "labour", "subcontractor"] }
+};
+const ROLE_KINDS = {
+  client: ["bill", "receipt", "gave", "got"],
+  supplier: ["purchase", "supplier_paid", "advance", "gave", "got"],
+  labour: ["wages_due", "wages_paid", "advance", "gave", "got"],
+  subcontractor: ["sub_bill", "sub_paid", "advance", "gave", "got"]
+};
+
+function esc(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (ch) => {
+    if (ch === "&") return "&" + "amp;";
+    if (ch === "<") return "&" + "lt;";
+    if (ch === ">") return "&" + "gt;";
+    if (ch === '"') return "&" + "quot;";
+    return "&" + "#39;";
+  });
+}
+function iso(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return y + "-" + m + "-" + d;
+}
+function daysAgo(n) {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return iso(d);
+}
+function inr(n) {
+  const amount = Math.abs(Number(n) || 0);
+  return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: amount % 1 ? 2 : 0 }).format(amount);
+}
+function dayLabel(value) {
+  const [y, m, d] = value.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+}
+function monthLabel(key) {
+  const [y, m] = key.split("-").map(Number);
+  return new Date(y, m - 1, 1).toLocaleDateString("en-IN", { month: "long", year: "numeric" });
+}
+function uid() {
+  return Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+}
+function entry(id, partyId, siteId, kind, amount, days, note) {
+  const date = daysAgo(days);
+  return { id, partyId, siteId, kind, amount, date, note, createdAt: date + "T08:00:00.000Z" };
+}
+function sample() {
+  return {
+    businessName: "Aarav Constructions",
+    showSampleHint: true,
+    parties: [
+      { id: "p-mehta", name: "Mehta Developers", phone: "9810011122", role: "client", note: "Block B, RA bills monthly" },
+      { id: "p-pwd", name: "PWD Rewari", phone: "9871002200", role: "client", note: "Site engineer Sandeep" },
+      { id: "p-sharma", name: "R.K. Sharma", phone: "9810099330", role: "client", note: "Farmhouse, closed" },
+      { id: "p-bharat", name: "Bharat Cement & Steel", phone: "9811122334", role: "supplier", note: "UltraTech + TMT" },
+      { id: "p-yamuna", name: "Yamuna Sand Suppliers", phone: "9899112233", role: "supplier", note: "Coarse sand" },
+      { id: "p-om", name: "Om Electricals", phone: "9811776655", role: "supplier", note: "Conduit and DB" },
+      { id: "p-raju", name: "Raju Mistry gang", phone: "9891002211", role: "labour", note: "6 masons, weekly" },
+      { id: "p-suresh", name: "Suresh Bar-bender", phone: "9812003344", role: "labour", note: "Adjust advance" },
+      { id: "p-imran", name: "Imran Painter", phone: "9711005566", role: "labour", note: "Farmhouse final coat" },
+      { id: "p-kiran", name: "Kiran Plumbing Works", phone: "9811556677", role: "subcontractor", note: "Shafts and toilets" },
+      { id: "p-jcb", name: "Desert Earthmovers", phone: "9800112233", role: "subcontractor", note: "JCB with diesel" }
+    ],
+    sites: [
+      { id: "s-green", name: "Greenfield Residency", location: "Sector 42, Gurugram", status: "active", clientPartyId: "p-mehta" },
+      { id: "s-nh", name: "NH-48 Culvert", location: "km 12.4, Rewari", status: "active", clientPartyId: "p-pwd" },
+      { id: "s-farm", name: "Sharma Farmhouse", location: "Sohna Road", status: "completed", clientPartyId: "p-sharma" }
+    ],
+    entries: [
+      entry("e1", "p-mehta", "s-green", "bill", 840000, 45, "RA bill 2 — structure up to lintel"),
+      entry("e2", "p-mehta", "s-green", "receipt", 500000, 32, "NEFT against RA-2"),
+      entry("e3", "p-mehta", "s-green", "bill", 620000, 14, "RA bill 3 — Block B slab"),
+      entry("e4", "p-mehta", "s-green", "receipt", 200000, 3, "NEFT part payment"),
+      entry("e5", "p-pwd", "s-nh", "bill", 350000, 21, "Bill 1 — culvert package"),
+      entry("e6", "p-pwd", "s-nh", "receipt", 150000, 9, "Cheque 441208"),
+      entry("e7", "p-sharma", "s-farm", "bill", 240000, 50, "Final bill — farmhouse complete"),
+      entry("e8", "p-sharma", "s-farm", "receipt", 240000, 40, "Full and final"),
+      entry("e9", "p-bharat", "s-green", "purchase", 96000, 20, "UltraTech 200 bags"),
+      entry("e10", "p-bharat", "s-green", "purchase", 90000, 11, "TMT steel 1.5 ton"),
+      entry("e11", "p-bharat", "s-green", "supplier_paid", 120000, 6, "RTGS"),
+      entry("e12", "p-yamuna", "s-green", "purchase", 54000, 18, "3 trolleys coarse sand"),
+      entry("e13", "p-yamuna", "s-green", "supplier_paid", 54000, 16, "Cash at site"),
+      entry("e14", "p-om", "s-green", "purchase", 38500, 8, "Conduit, wires, DB — Block B"),
+      entry("e15", "p-om", "s-green", "supplier_paid", 20000, 2, "Part cash"),
+      entry("e16", "p-raju", "s-green", "wages_due", 36000, 24, "Week 1 — 6 masons"),
+      entry("e17", "p-raju", "s-green", "wages_paid", 30000, 23, "Cash"),
+      entry("e18", "p-raju", "s-green", "wages_due", 42000, 17, "Week 2 — slab shuttering"),
+      entry("e19", "p-raju", "s-green", "wages_paid", 40000, 16, "Cash"),
+      entry("e20", "p-raju", "s-green", "wages_due", 38000, 10, "Week 3"),
+      entry("e21", "p-raju", "s-green", "wages_paid", 20000, 5, "Part payment"),
+      entry("e22", "p-raju", "s-green", "wages_paid", 8000, 0, "Today — mason advance against week 3"),
+      entry("e23", "p-suresh", "s-green", "wages_due", 28000, 15, "Bar bending, Block B"),
+      entry("e24", "p-suresh", "s-green", "advance", 10000, 13, "Advance — family function"),
+      entry("e25", "p-suresh", "s-green", "wages_paid", 15000, 7, "Balance wages"),
+      entry("e26", "p-imran", "s-farm", "wages_due", 22000, 27, "Final coat, farmhouse"),
+      entry("e27", "p-imran", "s-farm", "wages_paid", 22000, 26, "Settled"),
+      entry("e28", "p-kiran", "s-green", "sub_bill", 95000, 19, "Plumbing shaft + toilets, Block A"),
+      entry("e29", "p-kiran", "s-green", "sub_paid", 60000, 12, "Part"),
+      entry("e30", "p-jcb", "s-green", "sub_bill", 24000, 22, "JCB 8 hrs, foundation pit"),
+      entry("e31", "p-jcb", "s-nh", "sub_bill", 24000, 7, "JCB backfill, culvert"),
+      entry("e32", "p-jcb", "s-nh", "sub_paid", 32000, 4, "Cash, balance still open")
+    ]
+  };
+}
+
+let state = load();
+let view = { name: "home" };
+let modal = null;
+let filter = "all";
+let query = "";
+let reportMonth = iso(new Date()).slice(0, 7);
+
+function load() {
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (raw) {
+      const data = JSON.parse(raw);
+      if (data && Array.isArray(data.parties) && Array.isArray(data.entries)) return data;
+    }
+  } catch (err) { /* keep sample */ }
+  return sample();
+}
+function persist() { localStorage.setItem(KEY, JSON.stringify(state)); }
+function partyById(id) { return state.parties.find((p) => p.id === id); }
+function siteById(id) { return state.sites.find((s) => s.id === id); }
+function partyBalance(id) {
+  let gave = 0, got = 0;
+  for (const item of state.entries) {
+    if (item.partyId !== id) continue;
+    if (KINDS[item.kind].dir === "gave") gave += item.amount;
+    else got += item.amount;
+  }
+  return { gave, got, net: gave - got };
+}
+function labelOf(net) {
+  if (net > 0.001) return { title: "You'll get", tone: "get", amount: net };
+  if (net < -0.001) return { title: "You'll give", tone: "give", amount: -net };
+  return { title: "Settled", tone: "muted", amount: 0 };
+}
+function totals() {
+  let get = 0, give = 0;
+  for (const party of state.parties) {
+    const net = partyBalance(party.id).net;
+    if (net > 0) get += net;
+    else if (net < 0) give += -net;
+  }
+  return { get, give, net: get - give };
+}
+function sorted(list) {
+  return list.slice().sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : a.createdAt < b.createdAt ? 1 : -1));
+}
+function running(list) {
+  const asc = list.slice().sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.createdAt < b.createdAt ? -1 : 1));
+  const map = {};
+  let net = 0;
+  for (const item of asc) {
+    net += KINDS[item.kind].dir === "gave" ? item.amount : -item.amount;
+    map[item.id] = net;
+  }
+  return map;
+}
+function go(next) { view = next; modal = null; render(); }
+function openModal(next) { modal = next; render(); }
+
+function shell(body) {
+  const nav = [
+    ["home", "Home"],
+    ["parties", "Parties"],
+    ["sites", "Sites"],
+    ["reports", "Reports"]
+  ].map(([id, label]) => `<button data-go="${id}" class="${view.name === id || (id === "parties" && view.name === "party") || (id === "sites" && view.name === "site") ? "on" : ""}">${label}</button>`).join("");
+  return `<div class="app">
+    <aside>
+      <div class="brand"><strong>Sitekhata</strong><p>Installed on this PC</p></div>
+      <nav>${nav}</nav>
+      <div class="firm"><button data-modal="books">${esc(state.businessName)}</button></div>
+    </aside>
+    <div class="desk">
+      <div class="top">
+        <button class="who" data-modal="books"><span>Firm</span><strong>${esc(state.businessName)}</strong></button>
+        <button class="btn" data-modal="entry">Add entry <kbd>N</kbd></button>
+      </div>
+      <div class="main">${body}</div>
+    </div>
+  </div>${modalHtml()}`;
+}
+
+function homePage() {
+  const t = totals();
+  const net = labelOf(t.net);
+  const month = iso(new Date()).slice(0, 7);
+  let cashIn = 0, cashOut = 0;
+  for (const item of state.entries) {
+    if (!item.date.startsWith(month) || !KINDS[item.kind].cash) continue;
+    if (KINDS[item.kind].dir === "got") cashIn += item.amount;
+    else cashOut += item.amount;
+  }
+  const open = state.parties.map((p) => ({ p, b: partyBalance(p.id) })).filter((x) => Math.abs(x.b.net) > 0.001).sort((a, b) => Math.abs(b.b.net) - Math.abs(a.b.net));
+  const recent = sorted(state.entries).slice(0, 8);
+  const banner = state.showSampleHint ? `<div class="banner"><strong>Sample books are loaded.</strong><p class="lede">Replace them with your own sites when you are ready. Your books stay in this program on this PC.</p><div class="actions"><button class="btn navy" data-act="clear">Use my own books</button><button class="btn ghost" data-act="keep">Keep sample</button></div></div>` : "";
+  const rows = open.map(({ p, b }) => {
+    const lab = labelOf(b.net);
+    return `<tr class="click" data-party="${esc(p.id)}"><td>${esc(p.name)}</td><td>${esc(ROLES[p.role].label)}</td><td class="right"><span class="${lab.tone}">${inr(lab.amount)}</span> <span class="muted">${esc(lab.title)}</span></td></tr>`;
+  }).join("");
+  const latest = recent.map((item) => {
+    const meta = KINDS[item.kind];
+    const gave = meta.dir === "gave";
+    const party = partyById(item.partyId);
+    const site = item.siteId ? siteById(item.siteId) : null;
+    return `<tr class="click" data-edit="${esc(item.id)}"><td>${esc(dayLabel(item.date))}</td><td>${esc(party ? party.name : "")}<div class="muted">${esc(meta.label)}${site ? " · " + esc(site.name) : ""}</div></td><td class="right give">${gave ? inr(item.amount) : "—"}</td><td class="right get">${gave ? "—" : inr(item.amount)}</td></tr>`;
+  }).join("");
+  return `${banner}
+    <p class="muted">${esc(monthLabel(month))}</p>
+    <h1>${esc(state.businessName)}</h1>
+    <div class="tiles">
+      <div class="tile mark"><p>You'll get</p><div class="num get">${inr(t.get)}</div></div>
+      <div class="tile"><p>You'll give</p><div class="num give">${inr(t.give)}</div></div>
+      <div class="tile"><p>${esc(t.net === 0 ? "Nothing open" : net.tone === "get" ? "In your favour" : "You owe overall")}</p><div class="num ${net.tone}">${inr(net.amount)}</div></div>
+      <div class="tile"><p>Cash this month</p><p style="margin-top:8px">In <b class="get">${inr(cashIn)}</b></p><p>Out <b class="give">${inr(cashOut)}</b></p></div>
+    </div>
+    <div class="split">
+      <section><h2>Open balances</h2><div class="card"><table><thead><tr><th>Party</th><th>Role</th><th class="right">Balance</th></tr></thead><tbody>${rows || `<tr><td colspan="3">Nothing open.</td></tr>`}</tbody></table></div></section>
+      <section><h2>Latest entries</h2><div class="card"><table><thead><tr><th>Date</th><th>Particulars</th><th class="right">You gave</th><th class="right">You got</th></tr></thead><tbody>${latest}</tbody></table></div></section>
+    </div>`;
+}
+
+function partiesPage() {
+  const q = query.trim().toLowerCase();
+  const rows = state.parties.filter((p) => filter === "all" || p.role === filter).filter((p) => !q || p.name.toLowerCase().includes(q) || p.phone.includes(q)).map((p) => ({ p, b: partyBalance(p.id) })).sort((a, b) => Math.abs(b.b.net) - Math.abs(a.b.net));
+  const chips = [["all", "All"], ["client", "Clients"], ["supplier", "Suppliers"], ["labour", "Labour"], ["subcontractor", "Subs"]].map(([id, label]) => `<button class="chip ${filter === id ? "on" : ""}" data-filter="${id}">${label}</button>`).join("");
+  const body = rows.map(({ p, b }) => {
+    const lab = labelOf(b.net);
+    return `<tr class="click" data-party="${esc(p.id)}"><td>${esc(p.name)}<div class="muted">${esc(p.note || "")}</div></td><td>${esc(ROLES[p.role].label)}</td><td>${esc(p.phone || "—")}</td><td class="right give">${inr(b.gave)}</td><td class="right get">${inr(b.got)}</td><td class="right"><span class="${lab.tone}">${inr(lab.amount)}</span> <span class="muted">${esc(lab.title)}</span></td></tr>`;
+  }).join("");
+  return `<div class="row"><div><h1>Parties</h1><p class="lede">Click a row to open that khata.</p></div><button class="btn" data-modal="party">Add party</button></div>
+    <div class="row" style="margin:14px 0"><input class="search" id="q" placeholder="Search name or phone" value="${esc(query)}"><div class="chips">${chips}</div></div>
+    <div class="card"><table><thead><tr><th>Party</th><th>Role</th><th>Phone</th><th class="right">You gave</th><th class="right">You got</th><th class="right">Balance</th></tr></thead><tbody>${body || `<tr><td colspan="6">No parties.</td></tr>`}</tbody></table></div>`;
+}
+
+function partyPage() {
+  const party = partyById(view.id);
+  if (!party) return `<h1>Party not found</h1><button class="back" data-go="parties">Back</button>`;
+  const b = partyBalance(party.id);
+  const lab = labelOf(b.net);
+  const list = sorted(state.entries.filter((item) => item.partyId === party.id));
+  const nets = running(list);
+  const rows = list.map((item) => {
+    const meta = KINDS[item.kind];
+    const gave = meta.dir === "gave";
+    const run = labelOf(nets[item.id] || 0);
+    const site = item.siteId ? siteById(item.siteId) : null;
+    return `<tr class="click" data-edit="${esc(item.id)}"><td>${esc(dayLabel(item.date))}</td><td>${esc(meta.label)}<div class="muted">${esc(item.note || "—")}${site ? " · " + esc(site.name) : ""}</div></td><td class="right give">${gave ? inr(item.amount) : "—"}</td><td class="right get">${gave ? "—" : inr(item.amount)}</td><td class="right"><span class="${run.tone}">${inr(run.amount)}</span><div class="muted">${esc(run.title)}</div></td></tr>`;
+  }).join("");
+  return `<button class="back" data-go="parties">← Parties</button>
+    <div class="khata">
+      <div>
+        <p class="tag" style="color:var(--brass);font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase">${esc(ROLES[party.role].label)}</p>
+        <h1>${esc(party.name)}</h1>
+        <p class="lede">${esc(party.note || "")}</p>
+        <div class="balance"><p class="muted">${esc(lab.title)}</p><div class="num ${lab.tone}">${inr(lab.amount)}</div>
+          <p>You gave <b class="give">${inr(b.gave)}</b></p><p>You got <b class="get">${inr(b.got)}</b></p></div>
+        <div class="actions">
+          <button class="btn" data-modal="entry" data-party="${esc(party.id)}">Add entry</button>
+          <button class="btn ghost" data-modal="party" data-id="${esc(party.id)}">Edit</button>
+          <button class="btn ghost" data-act="copy" data-id="${esc(party.id)}">Copy reminder</button>
+        </div>
+      </div>
+      <div class="card"><table><thead><tr><th>Date</th><th>Particulars</th><th class="right">You gave</th><th class="right">You got</th><th class="right">Balance</th></tr></thead><tbody>${rows || `<tr><td colspan="5">No entries yet.</td></tr>`}</tbody></table></div>
+    </div>`;
+}
+
+function sitesPage() {
+  const cards = state.sites.slice().sort((a, b) => (a.status === b.status ? a.name.localeCompare(b.name) : a.status === "active" ? -1 : 1)).map((site) => {
+    const client = site.clientPartyId ? partyById(site.clientPartyId) : null;
+    const tagged = state.entries.filter((item) => item.siteId === site.id);
+    const billed = tagged.filter((item) => item.kind === "bill").reduce((sum, item) => sum + item.amount, 0);
+    return `<button class="site" data-site="${esc(site.id)}"><div class="tag">${site.status === "active" ? "Active" : "Completed"}</div><h2>${esc(site.name)}</h2><p class="lede">${esc(site.location || "")}</p><p>Client ${esc(client ? client.name : "Not linked")}</p><p class="muted">Billed ${inr(billed)} · ${tagged.length} entries</p></button>`;
+  }).join("");
+  return `<div class="row"><div><h1>Sites</h1><p class="lede">Each job, with its bills and spend.</p></div><button class="btn" data-modal="site">Add site</button></div><div class="sites" style="margin-top:16px">${cards || `<p>No sites yet.</p>`}</div>`;
+}
+
+function sitePage() {
+  const site = siteById(view.id);
+  if (!site) return `<h1>Site not found</h1>`;
+  const list = sorted(state.entries.filter((item) => item.siteId === site.id));
+  const billed = list.filter((item) => item.kind === "bill").reduce((s, i) => s + i.amount, 0);
+  const received = list.filter((item) => item.kind === "receipt").reduce((s, i) => s + i.amount, 0);
+  const cashOut = list.filter((item) => KINDS[item.kind].cash && KINDS[item.kind].dir === "gave").reduce((s, i) => s + i.amount, 0);
+  const rows = list.map((item) => {
+    const meta = KINDS[item.kind];
+    const gave = meta.dir === "gave";
+    const party = partyById(item.partyId);
+    return `<tr class="click" data-edit="${esc(item.id)}"><td>${esc(dayLabel(item.date))}</td><td>${esc(party ? party.name : "")}<div class="muted">${esc(meta.label)}${item.note ? " — " + esc(item.note) : ""}</div></td><td class="right give">${gave ? inr(item.amount) : "—"}</td><td class="right get">${gave ? "—" : inr(item.amount)}</td></tr>`;
+  }).join("");
+  return `<button class="back" data-go="sites">← Sites</button><h1>${esc(site.name)}</h1><p class="lede">${esc(site.location || "")}</p>
+    <div class="tiles"><div class="tile"><p>Billed</p><div class="num">${inr(billed)}</div></div><div class="tile"><p>Received</p><div class="num get">${inr(received)}</div></div><div class="tile"><p>Cash out</p><div class="num give">${inr(cashOut)}</div></div></div>
+    <button class="btn" data-modal="entry" data-site="${esc(site.id)}">Add entry on this site</button>
+    <div class="card" style="margin-top:14px"><table><thead><tr><th>Date</th><th>Particulars</th><th class="right">You gave</th><th class="right">You got</th></tr></thead><tbody>${rows || `<tr><td colspan="4">Nothing tagged here yet.</td></tr>`}</tbody></table></div>`;
+}
+
+function reportsPage() {
+  const months = [];
+  const cursor = new Date();
+  cursor.setDate(1);
+  for (let i = 0; i < 6; i += 1) {
+    months.push(iso(cursor).slice(0, 7));
+    cursor.setMonth(cursor.getMonth() - 1);
+  }
+  let cashIn = 0, cashOut = 0;
+  const byKind = {};
+  for (const item of state.entries) {
+    if (!item.date.startsWith(reportMonth)) continue;
+    const meta = KINDS[item.kind];
+    byKind[item.kind] = (byKind[item.kind] || 0) + item.amount;
+    if (!meta.cash) continue;
+    if (meta.dir === "got") cashIn += item.amount;
+    else cashOut += item.amount;
+  }
+  const max = Math.max(1, ...Object.values(byKind));
+  const bars = Object.entries(byKind).sort((a, b) => b[1] - a[1]).map(([kind, amount]) => {
+    const meta = KINDS[kind];
+    return `<div style="margin-bottom:10px"><div class="row"><span>${esc(meta.label)}</span><b class="${meta.dir === "gave" ? "give" : "get"}">${inr(amount)}</b></div><div style="height:8px;background:var(--line);border-radius:99px"><div style="height:8px;border-radius:99px;width:${Math.max(6, (amount / max) * 100)}%;background:${meta.dir === "gave" ? "var(--give)" : "var(--get)"}"></div></div></div>`;
+  }).join("");
+  const chips = months.map((key) => `<button class="chip ${reportMonth === key ? "on" : ""}" data-month="${key}">${esc(monthLabel(key).split(" ")[0])}</button>`).join("");
+  const t = totals();
+  const open = state.parties.map((p) => ({ p, b: partyBalance(p.id) })).filter((x) => Math.abs(x.b.net) > 0.001).sort((a, b) => Math.abs(b.b.net) - Math.abs(a.b.net));
+  const rows = open.map(({ p, b }) => {
+    const lab = labelOf(b.net);
+    return `<tr class="click" data-party="${esc(p.id)}"><td>${esc(p.name)}</td><td>${esc(lab.title)}</td><td class="right ${lab.tone}">${inr(lab.amount)}</td></tr>`;
+  }).join("");
+  const net = cashIn - cashOut;
+  return `<h1>Reports</h1><p class="lede">Cash that moved, and balances still open.</p>
+    <div class="chips" style="margin:12px 0">${chips}</div>
+    <div class="tiles">
+      <div class="tile"><p>Cash in</p><div class="num get">${inr(cashIn)}</div></div>
+      <div class="tile"><p>Cash out</p><div class="num give">${inr(cashOut)}</div></div>
+      <div class="tile"><p>${net >= 0 ? "Cash left" : "Cash short"}</p><div class="num ${net >= 0 ? "get" : "give"}">${inr(net)}</div></div>
+      <div class="tile"><p>Open, all time</p><div class="num">${inr(t.net)}</div></div>
+    </div>
+    <div class="split">
+      <div class="card" style="padding:16px"><h2>What moved</h2>${bars || `<p class="muted">No entries this month.</p>`}</div>
+      <div class="card"><table><thead><tr><th>Open balances</th><th></th><th class="right">Amount</th></tr></thead><tbody>${rows}</tbody></table></div>
+    </div>`;
+}
+
+function field(label, html) { return `<label>${esc(label)}${html}</label>`; }
+
+function modalHtml() {
+  if (!modal) return "";
+  let inner = "";
+  if (modal.type === "entry") {
+    const existing = modal.id ? state.entries.find((item) => item.id === modal.id) : null;
+    const partyId = (modal.partyId || (existing && existing.partyId) || "");
+    const party = partyId ? partyById(partyId) : null;
+    const kind = modal.kind || (existing && existing.kind) || (party ? ROLE_KINDS[party.role][0] : "bill");
+    const amountValue = modal.amount != null ? modal.amount : (existing ? existing.amount : "");
+    const dateValue = modal.date || (existing ? existing.date : iso(new Date()));
+    const noteValue = modal.note != null ? modal.note : (existing ? existing.note : "");
+    const sitePick = modal.siteId != null ? modal.siteId : (existing && existing.siteId) || modal.siteLock || "";
+    const partyOptions = state.parties.map((p) => `<option value="${esc(p.id)}" ${p.id === partyId ? "selected" : ""}>${esc(p.name)}</option>`).join("");
+    const kinds = (party ? ROLE_KINDS[party.role] : ["gave", "got"]).map((id) => `<button type="button" class="${kind === id ? "on" : ""}" data-kind="${id}">${esc(KINDS[id].label)}<small>${esc(KINDS[id].hint)}</small></button>`).join("");
+    const siteOptions = `<option value="">No site</option>` + state.sites.map((s) => `<option value="${esc(s.id)}" ${sitePick === s.id ? "selected" : ""}>${esc(s.name)}</option>`).join("");
+    inner = `<h2>${existing ? "Edit entry" : "Add entry"}</h2><p class="lede">Same rule as a paper khata: you gave minus you got.</p>
+      ${field("Party", `<select id="f-party">${partyOptions}</select>`)}
+      <div class="kinds">${kinds}</div>
+      ${field("Amount (₹)", `<input id="f-amount" inputmode="decimal" value="${esc(amountValue)}">`)}
+      ${field("Date", `<input id="f-date" type="date" value="${esc(dateValue)}">`)}
+      ${field("Site", `<select id="f-site">${siteOptions}</select>`)}
+      ${field("Note", `<textarea id="f-note">${esc(noteValue)}</textarea>`)}
+      <p class="err" id="f-err"></p>
+      <div class="actions"><button class="btn" data-act="save-entry">Save entry</button>${existing ? `<button class="btn danger" data-act="delete-entry" data-id="${esc(existing.id)}">Delete</button>` : ""}<button class="btn ghost" data-act="close">Cancel</button></div>`;
+  } else if (modal.type === "party") {
+    const existing = modal.id ? partyById(modal.id) : null;
+    const role = modal.role || (existing && existing.role) || "client";
+    const nameValue = modal.name != null ? modal.name : (existing ? existing.name : "");
+    const phoneValue = modal.phone != null ? modal.phone : (existing ? existing.phone : "");
+    const noteValue = modal.note != null ? modal.note : (existing ? existing.note : "");
+    const roles = Object.keys(ROLES).map((id) => `<button type="button" class="${role === id ? "on" : ""}" data-role="${id}">${esc(ROLES[id].label)}<small>${esc(ROLES[id].hint)}</small></button>`).join("");
+    inner = `<h2>${existing ? "Edit party" : "New party"}</h2><div class="kinds">${roles}</div>
+      ${field("Name", `<input id="f-name" value="${esc(nameValue)}">`)}
+      ${field("Phone", `<input id="f-phone" value="${esc(phoneValue)}">`)}
+      ${field("Note", `<textarea id="f-note">${esc(noteValue)}</textarea>`)}
+      <p class="err" id="f-err"></p>
+      <div class="actions"><button class="btn" data-act="save-party">Save party</button>${existing ? `<button class="btn danger" data-act="delete-party" data-id="${esc(existing.id)}">Delete</button>` : ""}<button class="btn ghost" data-act="close">Cancel</button></div>`;
+  } else if (modal.type === "site") {
+    const existing = modal.id ? siteById(modal.id) : null;
+    const clients = state.parties.filter((p) => p.role === "client").map((p) => `<option value="${esc(p.id)}" ${existing && existing.clientPartyId === p.id ? "selected" : ""}>${esc(p.name)}</option>`).join("");
+    inner = `<h2>${existing ? "Edit site" : "New site"}</h2>
+      ${field("Site name", `<input id="f-name" value="${esc(existing ? existing.name : "")}">`)}
+      ${field("Location", `<input id="f-loc" value="${esc(existing ? existing.location : "")}">`)}
+      ${field("Status", `<select id="f-status"><option value="active" ${!existing || existing.status === "active" ? "selected" : ""}>Active</option><option value="completed" ${existing && existing.status === "completed" ? "selected" : ""}>Completed</option></select>`)}
+      ${field("Client", `<select id="f-client"><option value="">No client linked</option>${clients}</select>`)}
+      <p class="err" id="f-err"></p>
+      <div class="actions"><button class="btn" data-act="save-site">Save site</button>${existing ? `<button class="btn danger" data-act="delete-site" data-id="${esc(existing.id)}">Delete</button>` : ""}<button class="btn ghost" data-act="close">Cancel</button></div>`;
+  } else if (modal.type === "books") {
+    inner = `<h2>Your books</h2><p class="lede">Saved on this PC, inside this program. Export a backup before you clear them.</p>
+      ${field("Firm name", `<input id="f-name" value="${esc(state.businessName)}">`)}
+      <div class="actions"><button class="btn" data-act="save-name">Save name</button><button class="btn soft" data-act="export">Export</button><button class="btn soft" data-act="import">Import</button><input id="f-file" type="file" accept="application/json" hidden><button class="btn ghost" data-act="sample">Load sample</button><button class="btn danger" data-act="clear">Start fresh</button></div>`;
+  }
+  return `<div class="mask" data-act="mask"><div class="dialog" data-stop="1">${inner}</div></div>`;
+}
+
+function page() {
+  if (view.name === "parties") return partiesPage();
+  if (view.name === "party") return partyPage();
+  if (view.name === "sites") return sitesPage();
+  if (view.name === "site") return sitePage();
+  if (view.name === "reports") return reportsPage();
+  return homePage();
+}
+function render() {
+  const root = document.getElementById("app");
+  const focus = document.activeElement && document.activeElement.id === "q" ? "q" : "";
+  root.innerHTML = shell(page());
+  if (focus) {
+    const box = document.getElementById("q");
+    if (box) { box.focus(); box.setSelectionRange(box.value.length, box.value.length); }
+  }
+}
+
+function val(id) { const el = document.getElementById(id); return el ? el.value : ""; }
+function setErr(message) { const el = document.getElementById("f-err"); if (el) el.textContent = message; }
+
+document.getElementById("app").addEventListener("click", (event) => {
+  const t = event.target.closest("[data-go],[data-party],[data-site],[data-edit],[data-modal],[data-filter],[data-month],[data-kind],[data-role],[data-act]");
+  if (!t) return;
+  if (t.dataset.stop) return;
+  if (t.dataset.go) return go({ name: t.dataset.go });
+  if (t.dataset.party && !t.dataset.modal) return go({ name: "party", id: t.dataset.party });
+  if (t.dataset.site && !t.dataset.modal) return go({ name: "site", id: t.dataset.site });
+  if (t.dataset.edit) {
+    const item = state.entries.find((entry) => entry.id === t.dataset.edit);
+    if (item) openModal({ type: "entry", id: item.id, partyId: item.partyId, siteId: item.siteId, kind: item.kind });
+    return;
+  }
+  if (t.dataset.filter) { filter = t.dataset.filter; return render(); }
+  if (t.dataset.month) { reportMonth = t.dataset.month; return render(); }
+  if (t.dataset.kind) {
+    modal = { ...modal, kind: t.dataset.kind, partyId: val("f-party") || modal.partyId, siteId: val("f-site"), amount: val("f-amount"), date: val("f-date"), note: val("f-note") };
+    return render();
+  }
+  if (t.dataset.role) {
+    modal = { ...modal, role: t.dataset.role, name: val("f-name"), phone: val("f-phone"), note: val("f-note") };
+    return render();
+  }
+  if (t.dataset.modal) {
+    openModal({ type: t.dataset.modal, id: t.dataset.id || null, partyId: t.dataset.party || null, siteId: t.dataset.site || null });
+    return;
+  }
+  const act = t.dataset.act;
+  if (!act) return;
+  if (act === "mask") { if (event.target === t) { modal = null; render(); } return; }
+  if (act === "close") { modal = null; return render(); }
+  if (act === "keep") { state.showSampleHint = false; persist(); return render(); }
+  if (act === "clear") {
+    if (!confirm("Clear every party, site, and entry stored in this program on this PC?")) return;
+    state = { businessName: "My Construction Co.", parties: [], sites: [], entries: [], showSampleHint: false };
+    persist(); modal = null; view = { name: "home" }; return render();
+  }
+  if (act === "sample") {
+    if (!confirm("Replace the books in this program with the sample contractor?")) return;
+    state = sample(); persist(); modal = null; return render();
+  }
+  if (act === "save-name") {
+    state.businessName = val("f-name").trim() || "My Construction Co.";
+    persist(); modal = null; return render();
+  }
+  if (act === "export") {
+    const blob = new Blob([JSON.stringify({ businessName: state.businessName, parties: state.parties, sites: state.sites, entries: state.entries }, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "sitekhata-backup.json"; a.click();
+    URL.revokeObjectURL(url);
+    return;
+  }
+  if (act === "import") { const input = document.getElementById("f-file"); if (input) input.click(); return; }
+  if (act === "copy") {
+    const party = partyById(t.dataset.id);
+    if (!party) return;
+    const lab = labelOf(partyBalance(party.id).net);
+    const text = `${party.name},\n\nReminder from ${state.businessName}.\n${lab.title}: ${inr(lab.amount)} as on ${dayLabel(iso(new Date()))}.\n\nThank you.\n— ${state.businessName}`;
+    navigator.clipboard.writeText(text).then(() => alert("Reminder copied."), () => alert(text));
+    return;
+  }
+  if (act === "save-entry") {
+    const partyId = val("f-party");
+    const amount = Number(String(val("f-amount")).replace(/,/g, ""));
+    const date = val("f-date");
+    if (!partyId) return setErr("Choose a party.");
+    if (!Number.isFinite(amount) || amount <= 0) return setErr("Enter an amount greater than zero.");
+    if (!date) return setErr("Pick a date.");
+    const input = { partyId, siteId: val("f-site") || null, kind: modal.kind || ROLE_KINDS[partyById(partyId).role][0], amount: Math.round(amount * 100) / 100, date, note: val("f-note").trim() };
+    if (modal.id) state.entries = state.entries.map((item) => item.id === modal.id ? { ...item, ...input } : item);
+    else state.entries.unshift({ id: uid(), ...input, createdAt: new Date().toISOString() });
+    persist(); modal = null; return render();
+  }
+  if (act === "delete-entry") {
+    state.entries = state.entries.filter((item) => item.id !== t.dataset.id);
+    persist(); modal = null; return render();
+  }
+  if (act === "save-party") {
+    const name = val("f-name").trim();
+    if (!name) return setErr("Name is required.");
+    const input = { name, phone: val("f-phone").trim(), role: modal.role || "client", note: val("f-note").trim() };
+    if (modal.id) state.parties = state.parties.map((p) => p.id === modal.id ? { ...p, ...input } : p);
+    else state.parties.unshift({ id: uid(), ...input });
+    persist(); modal = null; return render();
+  }
+  if (act === "delete-party") {
+    const id = t.dataset.id;
+    state.parties = state.parties.filter((p) => p.id !== id);
+    state.entries = state.entries.filter((item) => item.partyId !== id);
+    state.sites = state.sites.map((s) => s.clientPartyId === id ? { ...s, clientPartyId: null } : s);
+    persist(); modal = null; if (view.name === "party") view = { name: "parties" }; return render();
+  }
+  if (act === "save-site") {
+    const name = val("f-name").trim();
+    if (!name) return setErr("Site name is required.");
+    const input = { name, location: val("f-loc").trim(), status: val("f-status"), clientPartyId: val("f-client") || null };
+    if (modal.id) state.sites = state.sites.map((s) => s.id === modal.id ? { ...s, ...input } : s);
+    else state.sites.unshift({ id: uid(), ...input });
+    persist(); modal = null; return render();
+  }
+  if (act === "delete-site") {
+    const id = t.dataset.id;
+    state.sites = state.sites.filter((s) => s.id !== id);
+    state.entries = state.entries.map((item) => item.siteId === id ? { ...item, siteId: null } : item);
+    persist(); modal = null; if (view.name === "site") view = { name: "sites" }; return render();
+  }
+});
+
+document.getElementById("app").addEventListener("input", (event) => {
+  if (event.target.id === "q") { query = event.target.value; render(); }
+  if (event.target.id === "f-party" && modal && modal.type === "entry") {
+    const party = partyById(event.target.value);
+    modal = { ...modal, partyId: event.target.value, kind: party ? ROLE_KINDS[party.role][0] : "gave", siteId: val("f-site") };
+    render();
+  }
+});
+document.getElementById("app").addEventListener("change", (event) => {
+  if (event.target.id !== "f-file" || !event.target.files[0]) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const data = JSON.parse(String(reader.result));
+      if (!data || !Array.isArray(data.parties) || !Array.isArray(data.sites) || !Array.isArray(data.entries)) throw new Error("bad");
+      state = { businessName: String(data.businessName || "My Construction Co."), parties: data.parties, sites: data.sites, entries: data.entries, showSampleHint: false };
+      persist(); modal = null; render();
+    } catch (err) { alert("That file is not a Sitekhata backup."); }
+  };
+  reader.readAsText(event.target.files[0]);
+});
+document.addEventListener("keydown", (event) => {
+  const tag = event.target && event.target.tagName;
+  if (event.key === "Escape" && modal) { modal = null; render(); }
+  if ((event.key === "n" || event.key === "N") && !event.ctrlKey && !event.metaKey && tag !== "INPUT" && tag !== "TEXTAREA" && tag !== "SELECT") {
+    event.preventDefault();
+    openModal({ type: "entry" });
+  }
+});
+render();
+</script>
+</body>
+</html>

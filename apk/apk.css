@@ -1,0 +1,10 @@
+@import "../src/styles.css";
+/* The APK build's Vite root is apk/, so point Tailwind at the app sources. */
+@source "../src";
+
+/* Bundled fonts (no network needed on the phone). Unlayered, so these win over
+   the Tailwind @theme defaults in src/styles.css. */
+:root {
+  --font-sans: "Outfit Variable", "Outfit", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Fraunces Variable", "Fraunces", "Iowan Old Style", Georgia, serif;
+}
