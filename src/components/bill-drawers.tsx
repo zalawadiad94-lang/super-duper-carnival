@@ -12,6 +12,7 @@ import {
   billDue,
   billLabel,
   defaultRate,
+  formatQty,
   lineTotal,
   nextBillNumber,
   possessive,
@@ -23,6 +24,7 @@ import {
 import { cn } from "@/lib/cn";
 import { formatINR, parseAmount, todayISO } from "@/lib/format";
 import { ROLE_META, type PartyRole } from "@/lib/model";
+import { itemStock } from "@/lib/stock";
 import { useLedger, useUi } from "@/lib/store";
 
 type PayMode = "unpaid" | "full" | "part";
@@ -81,6 +83,17 @@ function Chips<T extends string>({
   );
 }
 
+function StockHint({ before, after, unit, sale }: { before: number; after: number; unit: string; sale: boolean }) {
+  const short = sale && after < 0;
+  return (
+    <p className={cn("mt-1.5 rounded-lg px-2 py-1 text-xs", short ? "bg-give-soft text-give" : "bg-bg text-muted")}>
+      {short
+        ? `Only ${formatQty(before, unit)} in stock — stock will go to ${formatQty(after, unit)}`
+        : `Stock ${formatQty(before, unit)} → ${formatQty(after, unit)}`}
+    </p>
+  );
+}
+
 export function BillDrawer() {
   const form = useUi((state) => state.billForm);
   const close = useUi((state) => state.closeBillForm);
@@ -90,6 +103,8 @@ export function BillDrawer() {
   const addBill = useLedger((state) => state.addBill);
   const updateBill = useLedger((state) => state.updateBill);
   const addItem = useLedger((state) => state.addItem);
+  const items = useLedger((state) => state.items);
+  const adjustments = useLedger((state) => state.stockAdjustments);
   const existing = form.id ? bills.find((bill) => bill.id === form.id) : undefined;
 
   const [type, setType] = useState<BillType>("sale");
@@ -148,6 +163,22 @@ export function BillDrawer() {
   const meta = BILL_META[type];
   const hasItems = STOCK_EFFECT[type] !== 0;
   const itemsTotal = draftTotal(lines);
+
+  /** Stock before and after this bill, per item (the bill being edited left out). */
+  const stockPreview = useMemo(() => {
+    const others = existing ? bills.filter((bill) => bill.id !== existing.id) : bills;
+    const preview = new Map<string, { before: number; after: number; unit: string }>();
+    for (const line of lines) {
+      const item = line.itemId ? items.find((entry) => entry.id === line.itemId) : undefined;
+      if (!item) continue;
+      const before = preview.get(item.id)?.before ?? itemStock(item, others, adjustments);
+      const moved = lines
+        .filter((row) => row.itemId === item.id)
+        .reduce((sum, row) => sum + (Number.isNaN(toNum(row.qty)) ? 0 : toNum(row.qty)), 0);
+      preview.set(item.id, { before, after: round2(before + STOCK_EFFECT[type] * moved), unit: item.unit });
+    }
+    return preview;
+  }, [lines, items, bills, adjustments, existing, type]);
 
   function qtyOf(itemId: string) {
     return lines.filter((line) => line.itemId === itemId).reduce((sum, line) => sum + (toNum(line.qty) || 0), 0);
@@ -338,6 +369,9 @@ export function BillDrawer() {
                     className="pb-2 text-base"
                   />
                 </div>
+                {line.itemId && stockPreview.get(line.itemId) ? (
+                  <StockHint {...stockPreview.get(line.itemId)!} sale={type === "sale"} />
+                ) : null}
               </div>
             ))}
             <Button variant="soft" className="mt-2 w-full" onClick={() => setView("pick")}>

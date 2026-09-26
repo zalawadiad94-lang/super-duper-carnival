@@ -11,7 +11,6 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as BillsRouteImport } from './routes/bills'
-import { Route as ItemsRouteImport } from './routes/items'
 import { Route as PartiesRouteImport } from './routes/parties'
 import { Route as ReportsRouteImport } from './routes/reports'
 import { Route as SitesRouteImport } from './routes/sites'
@@ -27,11 +26,6 @@ const IndexRoute = IndexRouteImport.update({
 const BillsRoute = BillsRouteImport.update({
   id: '/bills',
   path: '/bills',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ItemsRoute = ItemsRouteImport.update({
-  id: '/items',
-  path: '/items',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PartiesRoute = PartiesRouteImport.update({
@@ -68,7 +62,6 @@ const SiteSiteIdRoute = SiteSiteIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/bills': typeof BillsRoute
-  '/items': typeof ItemsRoute
   '/parties': typeof PartiesRoute
   '/reports': typeof ReportsRoute
   '/sites': typeof SitesRoute
@@ -79,7 +72,6 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/bills': typeof BillsRoute
-  '/items': typeof ItemsRoute
   '/parties': typeof PartiesRoute
   '/reports': typeof ReportsRoute
   '/sites': typeof SitesRoute
@@ -91,7 +83,6 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/bills': typeof BillsRoute
-  '/items': typeof ItemsRoute
   '/parties': typeof PartiesRoute
   '/reports': typeof ReportsRoute
   '/sites': typeof SitesRoute
@@ -104,7 +95,6 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/bills'
-    | '/items'
     | '/parties'
     | '/reports'
     | '/sites'
@@ -115,7 +105,6 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/bills'
-    | '/items'
     | '/parties'
     | '/reports'
     | '/sites'
@@ -126,7 +115,6 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/bills'
-    | '/items'
     | '/parties'
     | '/reports'
     | '/sites'
@@ -138,7 +126,6 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   BillsRoute: typeof BillsRoute
-  ItemsRoute: typeof ItemsRoute
   PartiesRoute: typeof PartiesRoute
   ReportsRoute: typeof ReportsRoute
   SitesRoute: typeof SitesRoute
@@ -161,13 +148,6 @@ declare module '@tanstack/react-router' {
       path: '/bills'
       fullPath: '/bills'
       preLoaderRoute: typeof BillsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/items': {
-      id: '/items'
-      path: '/items'
-      fullPath: '/items'
-      preLoaderRoute: typeof ItemsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/parties': {
@@ -218,7 +198,6 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   BillsRoute: BillsRoute,
-  ItemsRoute: ItemsRoute,
   PartiesRoute: PartiesRoute,
   ReportsRoute: ReportsRoute,
   SitesRoute: SitesRoute,

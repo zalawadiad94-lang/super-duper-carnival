@@ -5,6 +5,9 @@ import { Money } from "@/components/money";
 import { LedgerTable } from "@/components/ledger-table";
 import { balanceLabel, bookTotals, cashInRange, directionOf, partyBalance, sortEntriesDesc, KIND_META } from "@/lib/model";
 import { formatMonth, monthKey, todayISO } from "@/lib/format";
+import { ChevronRight, PackageX } from "lucide-react";
+import { formatQty } from "@/lib/bills";
+import { itemStock, stockLevel } from "@/lib/stock";
 import { useLedger, useUi } from "@/lib/store";
 
 export const Route = createFileRoute("/")({ component: Home });
@@ -21,6 +24,12 @@ function Home() {
   const openPartyForm = useUi((state) => state.openPartyForm);
   const openSiteForm = useUi((state) => state.openSiteForm);
   const [confirmClear, setConfirmClear] = useState(false);
+  const items = useLedger((state) => state.items);
+  const bills = useLedger((state) => state.bills);
+  const adjustments = useLedger((state) => state.stockAdjustments);
+  const lowStock = items
+    .map((item) => ({ item, stock: itemStock(item, bills, adjustments) }))
+    .filter(({ item, stock }) => stockLevel(item, stock) !== "ok");
 
   const totals = bookTotals(parties, entries);
   const netLabel = balanceLabel(totals.net);
@@ -98,6 +107,27 @@ function Home() {
             </Button>
           </div>
         </section>
+      ) : null}
+
+      {lowStock.length ? (
+        <Link
+          to="/bills"
+          search={{ tab: "stock" }}
+          className="mb-4 flex items-center gap-3 rounded-2xl border border-warn/30 bg-warn-soft px-4 py-3"
+        >
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-warn text-bg">
+            <PackageX className="size-5" aria-hidden="true" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-semibold text-ink">
+              {lowStock.length} item{lowStock.length === 1 ? "" : "s"} running low
+            </span>
+            <span className="block truncate text-xs text-muted">
+              {lowStock.map(({ item, stock }) => `${item.name} ${formatQty(stock, item.unit)}`).join(" · ")}
+            </span>
+          </span>
+          <ChevronRight className="size-5 shrink-0 text-warn" aria-hidden="true" />
+        </Link>
       ) : null}
 
       <div className="grid gap-4 lg:hidden">

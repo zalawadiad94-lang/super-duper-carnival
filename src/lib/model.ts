@@ -1,5 +1,6 @@
 import { parseBills, parseItems, sampleBills, sampleItems, type Bill, type Item } from "@/lib/bills";
 import { daysAgo } from "@/lib/format";
+import { parseAdjustments, sampleAdjustments, type StockAdjustment } from "@/lib/stock";
 
 export const PARTY_ROLES = ["client", "supplier", "labour", "subcontractor"] as const;
 export type PartyRole = (typeof PARTY_ROLES)[number];
@@ -225,6 +226,7 @@ export type Books = {
   entries: Entry[];
   bills: Bill[];
   items: Item[];
+  stockAdjustments: StockAdjustment[];
   showSampleHint: boolean;
 };
 
@@ -313,6 +315,7 @@ export function sampleBooks(): Books {
     entries,
     bills: sampleBills(),
     items: sampleItems(),
+    stockAdjustments: sampleAdjustments(),
     showSampleHint: true,
   };
 }
@@ -393,6 +396,11 @@ export function parseBooks(value: unknown): Books | null {
     items: new Set(items.map((item) => item.id)),
   });
   if (!bills) return null;
+  const stockAdjustments = parseAdjustments(value.stockAdjustments, {
+    items: new Set(items.map((item) => item.id)),
+    sites: siteIds,
+  });
+  if (!stockAdjustments) return null;
 
   return {
     businessName: value.businessName.trim(),
@@ -401,6 +409,7 @@ export function parseBooks(value: unknown): Books | null {
     entries,
     bills,
     items,
+    stockAdjustments,
     showSampleHint: false,
   };
 }

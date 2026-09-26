@@ -1,21 +1,19 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
-import { Minus, Package, Plus, Search } from "lucide-react";
+import { ArrowDownToLine, ArrowUpFromLine, ClipboardCheck, Minus, Package, Plus, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { DrawerFrame } from "@/components/drawers";
 import { Money } from "@/components/money";
 import { Button, ConfirmDialog, Field, TextInput } from "@/components/ui";
 import {
-  billLabel,
   formatQty,
-  itemMoves,
-  itemStock,
   round2,
   type BillType,
   type Item,
 } from "@/lib/bills";
 import { cn } from "@/lib/cn";
 import { formatDay, formatINR } from "@/lib/format";
+import { LEVEL_META, moveLabel, itemStock, stockLevel, stockMoves } from "@/lib/stock";
 import { useLedger, useUi, type ItemInput } from "@/lib/store";
 
 const UNIT_SUGGESTIONS = ["bag", "ton", "kg", "cft", "brass", "trolley", "nos", "sqft", "rft", "hour", "litre"];
@@ -41,14 +39,17 @@ export function ItemCard({
   stock,
   show,
   action,
+  footer,
   onOpen,
 }: {
   item: Item;
   stock: number;
   show: "purchase" | "sale" | "both";
   action?: ReactNode;
+  footer?: ReactNode;
   onOpen?: () => void;
 }) {
+  const level = stockLevel(item, stock);
   const priceCell = (label: string, value: number | null) => (
     <div className="min-w-0">
       <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">{label}</p>
@@ -61,10 +62,15 @@ export function ItemCard({
         <span className="flex size-14 shrink-0 items-center justify-center rounded-xl bg-warn-soft text-warn">
           <Package className="size-7" aria-hidden="true" />
         </span>
-        <span className="min-w-0">
+        <span className="min-w-0 flex-1">
           <span className="block truncate text-base font-semibold">{item.name}</span>
           {item.unit ? <span className="text-xs text-muted">per {item.unit}</span> : null}
         </span>
+        {level !== "ok" ? (
+          <span className={cn("shrink-0 rounded-full px-2.5 py-1 text-xs font-bold", LEVEL_META[level].className)}>
+            {LEVEL_META[level].label}
+          </span>
+        ) : null}
       </button>
       <div className="mt-3 flex items-end justify-between gap-3">
         <div className={cn("grid flex-1 gap-3", show === "both" ? "grid-cols-3" : "grid-cols-2")}>
@@ -79,6 +85,7 @@ export function ItemCard({
         </div>
         {action}
       </div>
+      {footer}
     </div>
   );
 }
@@ -97,6 +104,7 @@ export function ItemForm({
   const [purchasePrice, setPurchasePrice] = useState(initial?.purchasePrice != null ? String(initial.purchasePrice) : "");
   const [salePrice, setSalePrice] = useState(initial?.salePrice != null ? String(initial.salePrice) : "");
   const [openingStock, setOpeningStock] = useState(initial ? String(initial.openingStock) : "");
+  const [minStock, setMinStock] = useState(initial?.minStock != null ? String(initial.minStock) : "");
   const [error, setError] = useState<string | null>(null);
 
   function submit(event: React.FormEvent) {
@@ -109,7 +117,9 @@ export function ItemForm({
     if (Number.isNaN(buy) || (buy !== null && buy < 0)) return setError("Check the purchase price.");
     if (Number.isNaN(sell) || (sell !== null && sell < 0)) return setError("Check the sale price.");
     if (Number.isNaN(opening)) return setError("Check the opening stock.");
-    onSave({ name, unit, purchasePrice: buy, salePrice: sell, openingStock: opening ?? 0 });
+    const min = parseNumber(minStock);
+    if (Number.isNaN(min) || (min !== null && min < 0)) return setError("Check the low stock level.");
+    onSave({ name, unit, purchasePrice: buy, salePrice: sell, openingStock: opening ?? 0, minStock: min });
   }
 
   return (
@@ -145,9 +155,14 @@ export function ItemForm({
           <TextInput inputMode="decimal" value={salePrice} onChange={(event) => setSalePrice(event.target.value)} placeholder="0" />
         </Field>
       </div>
-      <Field label={initial ? "Opening stock" : "Stock in hand now"}>
-        <TextInput inputMode="decimal" value={openingStock} onChange={(event) => setOpeningStock(event.target.value)} placeholder="0" />
-      </Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label={initial ? "Opening stock" : "Stock in hand now"}>
+          <TextInput inputMode="decimal" value={openingStock} onChange={(event) => setOpeningStock(event.target.value)} placeholder="0" />
+        </Field>
+        <Field label="Low stock alert at">
+          <TextInput inputMode="decimal" value={minStock} onChange={(event) => setMinStock(event.target.value)} placeholder="Optional" />
+        </Field>
+      </div>
       {error ? <p className="text-sm text-give">{error}</p> : null}
       <Button type="submit" className="w-full">
         {submitLabel}
@@ -172,6 +187,7 @@ export function ItemPicker({
 }) {
   const items = useLedger((state) => state.items);
   const bills = useLedger((state) => state.bills);
+  const adjustments = useLedger((state) => state.stockAdjustments);
   const [query, setQuery] = useState("");
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -210,7 +226,7 @@ export function ItemPicker({
             <ItemCard
               key={item.id}
               item={item}
-              stock={itemStock(item, bills)}
+              stock={itemStock(item, bills, adjustments)}
               show={type === "sale" ? "sale" : "purchase"}
               action={
                 qty > 0 ? (
@@ -244,24 +260,30 @@ export function ItemPicker({
   );
 }
 
-/** Create / edit an item from the Items page, with its stock history. */
+/** Create / edit an item, move its stock, and see its stock history. */
 export function ItemDrawer() {
   const form = useUi((state) => state.itemForm);
   const close = useUi((state) => state.closeItemForm);
+  const openStockForm = useUi((state) => state.openStockForm);
   const items = useLedger((state) => state.items);
   const bills = useLedger((state) => state.bills);
+  const adjustments = useLedger((state) => state.stockAdjustments);
   const addItem = useLedger((state) => state.addItem);
   const updateItem = useLedger((state) => state.updateItem);
   const deleteItem = useLedger((state) => state.deleteItem);
+  const deleteAdjustment = useLedger((state) => state.deleteAdjustment);
   const existing = form.id ? items.find((item) => item.id === form.id) : undefined;
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [removeMove, setRemoveMove] = useState<string | null>(null);
   const [formKey, setFormKey] = useState(0);
 
   useEffect(() => {
     if (form.open) setFormKey((key) => key + 1);
   }, [form.open, form.id]);
 
-  const moves = existing ? itemMoves(existing.id, bills) : [];
+  const moves = existing ? stockMoves(existing.id, bills, adjustments) : [];
+  const stock = existing ? itemStock(existing, bills, adjustments) : 0;
+  const level = existing ? stockLevel(existing, stock) : "ok";
 
   return (
     <>
@@ -271,12 +293,43 @@ export function ItemDrawer() {
           if (!open) close();
         }}
         title={existing ? existing.name : "New item"}
-        lede={
-          existing
-            ? `In stock: ${formatQty(itemStock(existing, bills), existing.unit)}`
-            : "Material or work you buy or sell."
-        }
+        lede={existing ? undefined : "Material or work you buy or sell."}
       >
+        {existing ? (
+          <div className="mb-5 rounded-2xl bg-header p-4 text-bg">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs text-bg/75">Current stock</p>
+                <p className="font-display text-3xl">{formatQty(stock, existing.unit)}</p>
+                {existing.minStock !== null ? (
+                  <p className="text-xs text-bg/75">Alert at {formatQty(existing.minStock, existing.unit)}</p>
+                ) : null}
+              </div>
+              <span className={cn("rounded-full px-2.5 py-1 text-xs font-bold", LEVEL_META[level].className)}>
+                {LEVEL_META[level].label}
+              </span>
+            </div>
+            <div className="mt-3 grid grid-cols-3 gap-2">
+              {(
+                [
+                  ["out", "Stock out", ArrowUpFromLine],
+                  ["in", "Stock in", ArrowDownToLine],
+                  ["count", "Count", ClipboardCheck],
+                ] as const
+              ).map(([mode, label, Icon]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => openStockForm(existing.id, mode)}
+                  className="flex h-12 flex-col items-center justify-center rounded-xl bg-surface/15 text-xs font-semibold"
+                >
+                  <Icon className="size-4" aria-hidden="true" />
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
         <ItemForm
           key={formKey}
           initial={existing}
@@ -296,36 +349,54 @@ export function ItemDrawer() {
           <>
             <h3 className="mt-6 font-display text-lg">Stock history</h3>
             <div className="mt-2 overflow-hidden rounded-2xl border border-line">
-              <div className="flex justify-between border-b border-line bg-bg px-3 py-2 text-sm">
+              {moves.map((move) => {
+                const body = (
+                  <>
+                    <span className="min-w-0">
+                      <span className="block truncate font-medium">{moveLabel(move)}</span>
+                      <span className="block truncate text-xs text-muted">
+                        {formatDay(move.date)}
+                        {move.kind === "bill"
+                          ? ` · ${formatINR(move.line.rate)} per ${move.line.unit || "unit"}`
+                          : move.adjustment.note
+                            ? ` · ${move.adjustment.note}`
+                            : ""}
+                      </span>
+                    </span>
+                    <span className={cn("shrink-0 font-semibold tabular-nums", move.change > 0 ? "text-get" : "text-give")}>
+                      {move.change > 0 ? "+" : "−"}
+                      {formatQty(Math.abs(move.change), existing.unit)}
+                    </span>
+                  </>
+                );
+                return move.kind === "bill" ? (
+                  <Link
+                    key={move.id}
+                    to="/bill/$billId"
+                    params={{ billId: move.bill.id }}
+                    onClick={close}
+                    className="flex items-center justify-between gap-3 border-b border-line px-3 py-2 text-sm"
+                  >
+                    {body}
+                  </Link>
+                ) : (
+                  <div key={move.id} className="flex items-center justify-between gap-2 border-b border-line py-2 pl-3 pr-1 text-sm">
+                    {body}
+                    <button
+                      type="button"
+                      onClick={() => setRemoveMove(move.id)}
+                      className="flex size-8 shrink-0 items-center justify-center rounded-lg text-muted"
+                      aria-label="Remove this stock entry"
+                    >
+                      <Trash2 className="size-4" />
+                    </button>
+                  </div>
+                );
+              })}
+              <div className="flex justify-between bg-bg px-3 py-2 text-sm">
                 <span className="text-muted">Opening stock</span>
                 <span className="font-semibold tabular-nums">{formatQty(existing.openingStock, existing.unit)}</span>
               </div>
-              {moves.length === 0 ? (
-                <p className="px-3 py-3 text-sm text-muted">Not on any bill yet.</p>
-              ) : (
-                moves.map(({ bill, line, change }) => (
-                  <Link
-                    key={line.id}
-                    to="/bill/$billId"
-                    params={{ billId: bill.id }}
-                    onClick={close}
-                    className="flex items-center justify-between gap-3 border-b border-line px-3 py-2 text-sm last:border-b-0"
-                  >
-                    <span className="min-w-0">
-                      <span className="block truncate font-medium">
-                        {billLabel(bill)} · {bill.partyName}
-                      </span>
-                      <span className="text-xs text-muted">
-                        {formatDay(bill.date)} · {formatINR(line.rate)} per {line.unit || "unit"}
-                      </span>
-                    </span>
-                    <span className={cn("shrink-0 font-semibold tabular-nums", change > 0 ? "text-get" : "text-give")}>
-                      {change > 0 ? "+" : "−"}
-                      {formatQty(Math.abs(change), line.unit)}
-                    </span>
-                  </Link>
-                ))
-              )}
             </div>
             <Button variant="danger" className="mt-4 w-full" onClick={() => setConfirmDelete(true)}>
               Delete item
@@ -336,7 +407,7 @@ export function ItemDrawer() {
       <ConfirmDialog
         open={confirmDelete}
         title="Delete this item?"
-        body="Bills keep their rows for it; it just leaves your item list and stock."
+        body="Bills keep their rows for it; it leaves your item list, and its stock entries are removed."
         confirmLabel="Delete"
         danger
         onOpenChange={setConfirmDelete}
@@ -345,6 +416,20 @@ export function ItemDrawer() {
           setConfirmDelete(false);
           toast.success("Item deleted");
           close();
+        }}
+      />
+      <ConfirmDialog
+        open={removeMove !== null}
+        title="Remove this stock entry?"
+        body="The stock goes back to what it was before it."
+        confirmLabel="Remove"
+        danger
+        onOpenChange={(open) => {
+          if (!open) setRemoveMove(null);
+        }}
+        onConfirm={() => {
+          if (removeMove) deleteAdjustment(removeMove);
+          setRemoveMove(null);
         }}
       />
     </>

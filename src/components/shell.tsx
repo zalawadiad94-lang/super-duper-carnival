@@ -4,6 +4,7 @@ import { BarChart3, BookOpen, Building2, Home, Plus, ReceiptText, Users } from "
 import { Toaster } from "sonner";
 import { BillDrawer, PaymentDrawer } from "@/components/bill-drawers";
 import { ItemDrawer } from "@/components/items";
+import { StockDrawer } from "@/components/stock";
 import { BooksDrawer, EntryDrawer, PartyDrawer, SiteDrawer } from "@/components/drawers";
 import { InstallPcBar } from "@/components/install-pc";
 import { cn } from "@/lib/cn";
@@ -20,7 +21,7 @@ const NAV = [
 function isActive(path: string, href: string) {
   if (href === "/") return path === "/";
   if (href === "/parties") return path === "/parties" || path.startsWith("/party/");
-  if (href === "/bills") return path === "/bills" || path.startsWith("/bill/") || path === "/items";
+  if (href === "/bills") return path === "/bills" || path.startsWith("/bill/");
   if (href === "/sites") return path === "/sites" || path.startsWith("/site/");
   return path === href;
 }
@@ -190,6 +191,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <BillDrawer />
       <PaymentDrawer />
       <ItemDrawer />
+      <StockDrawer />
       <Toaster
         position="top-center"
         toastOptions={{

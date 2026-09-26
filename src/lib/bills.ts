@@ -22,6 +22,8 @@ export type Item = {
   salePrice: number | null;
   /** Stock on hand before any bill in the app. */
   openingStock: number;
+  /** Warn when stock falls to this level or below. */
+  minStock: number | null;
   createdAt: string;
 };
 
@@ -78,26 +80,6 @@ export function formatQty(qty: number, unit = "") {
 /** "Cement 200 bag, Sand 3 trolley" */
 export function linesSummary(lines: BillLine[]) {
   return lines.map((line) => `${line.name} ${formatQty(line.qty, line.unit)}`).join(", ");
-}
-
-export type StockMove = { bill: Bill; line: BillLine; change: number };
-
-/** Bill rows that moved this item's stock, newest first. */
-export function itemMoves(itemId: string, bills: Bill[]): StockMove[] {
-  const moves: StockMove[] = [];
-  for (const bill of bills) {
-    const effect = STOCK_EFFECT[bill.type];
-    if (!effect) continue;
-    for (const line of bill.lines) {
-      if (line.itemId === itemId) moves.push({ bill, line, change: effect * line.qty });
-    }
-  }
-  return moves.sort((a, b) => (a.bill.date < b.bill.date ? 1 : a.bill.date > b.bill.date ? -1 : 0));
-}
-
-/** Current stock: opening + purchased - sold. Can go negative. */
-export function itemStock(item: Item, bills: Bill[]) {
-  return round2(item.openingStock + itemMoves(item.id, bills).reduce((sum, move) => sum + move.change, 0));
 }
 
 export function defaultRate(item: Item, type: BillType) {
@@ -243,11 +225,11 @@ function sampleBill(
 export function sampleItems(): Item[] {
   const createdAt = `${daysAgo(80)}T08:00:00.000Z`;
   return [
-    { id: "i-cement", name: "Cement (UltraTech)", unit: "bag", purchasePrice: 480, salePrice: 520, openingStock: 20, createdAt },
-    { id: "i-sand", name: "Coarse sand", unit: "trolley", purchasePrice: 18000, salePrice: 19500, openingStock: 0, createdAt },
-    { id: "i-tmt", name: "TMT steel", unit: "ton", purchasePrice: 60000, salePrice: 64000, openingStock: 0.5, createdAt },
-    { id: "i-aggregate", name: "Aggregate 20mm", unit: "cft", purchasePrice: 78, salePrice: 90, openingStock: 200, createdAt },
-    { id: "i-bricks", name: "Bricks", unit: "nos", purchasePrice: 7.5, salePrice: 9, openingStock: 4000, createdAt },
+    { id: "i-cement", name: "Cement (UltraTech)", unit: "bag", purchasePrice: 480, salePrice: 520, openingStock: 20, minStock: 50, createdAt },
+    { id: "i-sand", name: "Coarse sand", unit: "trolley", purchasePrice: 18000, salePrice: 19500, openingStock: 0, minStock: 1, createdAt },
+    { id: "i-tmt", name: "TMT steel", unit: "ton", purchasePrice: 60000, salePrice: 64000, openingStock: 0.5, minStock: 0.5, createdAt },
+    { id: "i-aggregate", name: "Aggregate 20mm", unit: "cft", purchasePrice: 78, salePrice: 90, openingStock: 200, minStock: 100, createdAt },
+    { id: "i-bricks", name: "Bricks", unit: "nos", purchasePrice: 7.5, salePrice: 9, openingStock: 4000, minStock: 1000, createdAt },
   ];
 }
 
@@ -294,6 +276,7 @@ export function parseItems(value: unknown): Item[] | null {
       purchasePrice: price(item.purchasePrice),
       salePrice: price(item.salePrice),
       openingStock: typeof item.openingStock === "number" && Number.isFinite(item.openingStock) ? item.openingStock : 0,
+      minStock: price(item.minStock),
       createdAt: typeof item.createdAt === "string" ? item.createdAt : new Date().toISOString(),
     });
   }

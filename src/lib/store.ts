@@ -10,6 +10,7 @@ import {
   type BillType,
   type Item,
 } from "@/lib/bills";
+import type { StockAdjustment } from "@/lib/stock";
 import {
   parseBooks,
   sampleBooks,
@@ -58,6 +59,7 @@ export type BillInput = {
 };
 
 export type ItemInput = Omit<Item, "id" | "createdAt">;
+export type AdjustmentInput = Omit<StockAdjustment, "id" | "createdAt">;
 
 export type PaymentInput = { amount: number; date: string };
 
@@ -82,6 +84,8 @@ type LedgerState = Books & {
   addItem: (input: ItemInput) => string;
   updateItem: (id: string, input: ItemInput) => void;
   deleteItem: (id: string) => void;
+  addAdjustment: (input: AdjustmentInput) => void;
+  deleteAdjustment: (id: string) => void;
   loadSample: () => void;
   clearAll: () => void;
   replaceBooks: (value: unknown) => boolean;
@@ -244,6 +248,9 @@ export const useLedger = create<LedgerState>()(
             entry.siteId === id ? { ...entry, siteId: null } : entry,
           ),
           bills: state.bills.map((bill) => (bill.siteId === id ? { ...bill, siteId: null } : bill)),
+          stockAdjustments: state.stockAdjustments.map((adjustment) =>
+            adjustment.siteId === id ? { ...adjustment, siteId: null } : adjustment,
+          ),
         })),
       addEntry: (input) => {
         const id = uid();
@@ -361,6 +368,7 @@ export const useLedger = create<LedgerState>()(
       deleteItem: (id) =>
         set((state) => ({
           items: state.items.filter((item) => item.id !== id),
+          stockAdjustments: state.stockAdjustments.filter((adjustment) => adjustment.itemId !== id),
           // Bills keep the row (name, qty, rate); it just stops counting as stock.
           bills: state.bills.map((bill) =>
             bill.lines.some((line) => line.itemId === id)
@@ -368,6 +376,15 @@ export const useLedger = create<LedgerState>()(
               : bill,
           ),
         })),
+      addAdjustment: (input) =>
+        set((state) => ({
+          stockAdjustments: [
+            { id: uid(), ...input, note: input.note.trim(), createdAt: new Date().toISOString() },
+            ...state.stockAdjustments,
+          ],
+        })),
+      deleteAdjustment: (id) =>
+        set((state) => ({ stockAdjustments: state.stockAdjustments.filter((adjustment) => adjustment.id !== id) })),
       loadSample: () => set({ ...sampleBooks(), hydrated: true }),
       clearAll: () =>
         set({
@@ -377,6 +394,7 @@ export const useLedger = create<LedgerState>()(
           entries: [],
           bills: [],
           items: [],
+          stockAdjustments: [],
           showSampleHint: false,
         }),
       replaceBooks: (value) => {
@@ -388,12 +406,21 @@ export const useLedger = create<LedgerState>()(
     }),
     {
       name: "sitekhata-books-v1",
-      // v1 added bills, v2 items and bill rows. Books saved before start with
-      // none (not the sample's).
-      version: 2,
+      // v1 added bills, v2 items and bill rows, v3 stock adjustments and
+      // low-stock levels. Books saved before start with none (not the sample's).
+      version: 3,
       migrate: (persisted) => {
-        const state = { bills: [], items: [], ...(persisted as Partial<LedgerState>) } as LedgerState;
-        return { ...state, bills: state.bills.map((bill) => ({ ...bill, lines: bill.lines ?? [] })) };
+        const state = {
+          bills: [],
+          items: [],
+          stockAdjustments: [],
+          ...(persisted as Partial<LedgerState>),
+        } as LedgerState;
+        return {
+          ...state,
+          bills: state.bills.map((bill) => ({ ...bill, lines: bill.lines ?? [] })),
+          items: state.items.map((item) => ({ ...item, minStock: item.minStock ?? null })),
+        };
       },
       skipHydration: true,
       partialize: (state) => ({
@@ -403,6 +430,7 @@ export const useLedger = create<LedgerState>()(
         entries: state.entries,
         bills: state.bills,
         items: state.items,
+        stockAdjustments: state.stockAdjustments,
         showSampleHint: state.showSampleHint,
       }),
     },
@@ -419,6 +447,8 @@ type AddState = {
 type FormState = { open: boolean; id: string | null };
 type BillFormState = FormState & { type: BillType };
 type PaymentFormState = { open: boolean; billId: string | null };
+export type StockMode = "out" | "in" | "count";
+type StockFormState = { open: boolean; itemId: string | null; mode: StockMode };
 
 type UiState = {
   add: AddState;
@@ -428,6 +458,9 @@ type UiState = {
   billForm: BillFormState;
   paymentForm: PaymentFormState;
   itemForm: FormState;
+  stockForm: StockFormState;
+  openStockForm: (itemId: string | null, mode: StockMode) => void;
+  closeStockForm: () => void;
   openItemForm: (id?: string | null) => void;
   closeItemForm: () => void;
   openBillForm: (type: BillType, id?: string | null) => void;
@@ -450,6 +483,7 @@ const closed = {
   billForm: { open: false, id: null, type: "sale" as BillType },
   paymentForm: { open: false, billId: null },
   itemForm: { open: false, id: null },
+  stockForm: { open: false, itemId: null, mode: "out" as StockMode },
 };
 
 export const useUi = create<UiState>((set) => ({
@@ -460,6 +494,14 @@ export const useUi = create<UiState>((set) => ({
   billForm: closed.billForm,
   paymentForm: closed.paymentForm,
   itemForm: closed.itemForm,
+  stockForm: closed.stockForm,
+  openStockForm: (itemId, mode) =>
+    set({
+      ...closed,
+      add: { open: false, partyId: null, siteId: null, entryId: null },
+      stockForm: { open: true, itemId, mode },
+    }),
+  closeStockForm: () => set((state) => ({ stockForm: { ...state.stockForm, open: false } })),
   openItemForm: (id = null) =>
     set({
       ...closed,

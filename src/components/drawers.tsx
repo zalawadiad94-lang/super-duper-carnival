@@ -580,6 +580,7 @@ export function BooksDrawer() {
   const entries = useLedger((state) => state.entries);
   const bills = useLedger((state) => state.bills);
   const items = useLedger((state) => state.items);
+  const stockAdjustments = useLedger((state) => state.stockAdjustments);
   const fileRef = useRef<HTMLInputElement>(null);
   const [name, setName] = useState(businessName);
   const [confirmClear, setConfirmClear] = useState(false);
@@ -590,7 +591,7 @@ export function BooksDrawer() {
   }, [open, businessName]);
 
   function exportBooks() {
-    const payload = { businessName, parties, sites, entries, bills, items };
+    const payload = { businessName, parties, sites, entries, bills, items, stockAdjustments };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
