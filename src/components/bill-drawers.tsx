@@ -25,6 +25,7 @@ import {
 import { cn } from "@/lib/cn";
 import { formatINR, parseAmount, todayISO } from "@/lib/format";
 import { ROLE_META, type PartyRole } from "@/lib/model";
+import { isSupplierRole } from "@/lib/bills";
 import { itemStock } from "@/lib/stock";
 import { useLedger, useUi } from "@/lib/store";
 
@@ -53,7 +54,8 @@ function draftTotal(lines: DraftLine[]) {
 const ROLE_ORDER: Record<BillType, PartyRole[]> = {
   sale: ["client", "subcontractor", "supplier", "labour"],
   purchase: ["supplier", "subcontractor", "labour", "client"],
-  expense: ["supplier", "subcontractor", "labour", "client"],
+  // Suppliers and subcontractors are paid against purchase bills, never as expenses.
+  expense: ["labour", "client"],
 };
 
 function Chips<T extends string>({
@@ -146,6 +148,8 @@ export function BillDrawer() {
   function changeType(next: BillType) {
     setType(next);
     if (!STOCK_EFFECT[next]) setLines([]);
+    const current = parties.find((item) => item.id === partyId);
+    if (next === "expense" && current && isSupplierRole(current.role)) setPartyId("");
     if (!existing) {
       setNumber(String(nextBillNumber(bills, next)));
       setPayMode(next === "expense" ? "full" : "unpaid");
@@ -340,6 +344,12 @@ export function BillDrawer() {
           onChange={changeType}
           options={BILL_TYPES.map((id) => ({ id, label: BILL_META[id].tab }))}
         />
+        {type === "expense" ? (
+          <p className="-mt-2 rounded-xl bg-bg px-3 py-2 text-xs text-muted">
+            Paying a supplier or subcontractor isn't an expense — tap <strong>Pay</strong> on their bill in the Purchase
+            tab, or add a Purchase bill.
+          </p>
+        ) : null}
         <Field label="Party">
           <SelectInput value={partyId} onChange={(event) => setPartyId(event.target.value)}>
             <option value="">{type === "expense" ? "No party" : "No party (walk-in / cash)"}</option>

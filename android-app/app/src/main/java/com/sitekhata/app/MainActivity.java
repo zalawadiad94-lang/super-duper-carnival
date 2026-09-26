@@ -2,11 +2,14 @@ package com.sitekhata.app;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.content.ActivityNotFoundException;
+import android.content.ClipData;
 import android.content.Intent;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Bundle;
 import android.provider.ContactsContract;
+import android.util.Base64;
 import android.webkit.JavascriptInterface;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
@@ -16,6 +19,8 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Toast;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -37,7 +42,7 @@ public class MainActivity extends Activity {
 
     private WebView webView;
     private ValueCallback<Uri[]> pendingFilePick;
-    private String pendingSaveContents;
+    private byte[] pendingSaveBytes;
 
     @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
     @Override
@@ -91,18 +96,28 @@ public class MainActivity extends Activity {
                 pendingFilePick = null;
             }
         } else if (requestCode == REQUEST_SAVE_FILE) {
-            String contents = pendingSaveContents;
-            pendingSaveContents = null;
-            if (resultCode != RESULT_OK || data == null || data.getData() == null || contents == null) {
+            byte[] bytes = pendingSaveBytes;
+            pendingSaveBytes = null;
+            if (resultCode != RESULT_OK || data == null || data.getData() == null || bytes == null) {
                 return;
             }
             try (OutputStream out = getContentResolver().openOutputStream(data.getData())) {
-                out.write(contents.getBytes(StandardCharsets.UTF_8));
-                Toast.makeText(this, "Backup saved", Toast.LENGTH_SHORT).show();
+                out.write(bytes);
+                Toast.makeText(this, "Saved", Toast.LENGTH_SHORT).show();
             } catch (IOException | NullPointerException e) {
-                Toast.makeText(this, "Couldn't save the backup", Toast.LENGTH_LONG).show();
+                Toast.makeText(this, "Couldn't save the file", Toast.LENGTH_LONG).show();
             }
         }
+    }
+
+    private static Intent imageIntent(Uri uri, String caption) {
+        Intent intent = new Intent(Intent.ACTION_SEND);
+        intent.setType("image/jpeg");
+        intent.putExtra(Intent.EXTRA_STREAM, uri);
+        if (caption != null && !caption.isEmpty()) intent.putExtra(Intent.EXTRA_TEXT, caption);
+        intent.setClipData(ClipData.newRawUri("", uri));
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        return intent;
     }
 
     /** Reads the picked phone entry and hands it to src/lib/contacts.ts. */
@@ -151,10 +166,68 @@ public class MainActivity extends Activity {
         /** Called from apk/android-bridge.ts when the web app downloads a file. */
         @JavascriptInterface
         public void saveFile(final String fileName, final String mimeType, final String contents) {
+            askToSave(fileName, mimeType, contents.getBytes(StandardCharsets.UTF_8));
+        }
+
+        /** Save binary data (a JPG) through the system "Save to…" picker. */
+        @JavascriptInterface
+        public void saveBinary(final String fileName, final String mimeType, final String base64) {
+            askToSave(fileName, mimeType, Base64.decode(base64, Base64.DEFAULT));
+        }
+
+        /**
+         * Share an image. With whatsapp=true and a phone number, open WhatsApp
+         * straight to that number's chat with the image; otherwise, or if
+         * WhatsApp isn't there, open the share sheet.
+         */
+        @JavascriptInterface
+        public void shareImage(
+                final String base64, final String fileName, final String caption, final String phone, final boolean whatsapp) {
+            final Uri uri;
+            try {
+                String safeName = fileName.replaceAll("[^A-Za-z0-9._-]", "_");
+                File file = new File(ShareProvider.shareDir(MainActivity.this), safeName);
+                try (FileOutputStream out = new FileOutputStream(file)) {
+                    out.write(Base64.decode(base64, Base64.DEFAULT));
+                }
+                uri = Uri.parse("content://" + ShareProvider.AUTHORITY + "/" + safeName);
+            } catch (IOException | IllegalArgumentException e) {
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        Toast.makeText(MainActivity.this, "Couldn't make the image", Toast.LENGTH_LONG).show();
+                    }
+                });
+                return;
+            }
             runOnUiThread(new Runnable() {
                 @Override
                 public void run() {
-                    pendingSaveContents = contents;
+                    if (whatsapp) {
+                        for (String pkg : new String[] {"com.whatsapp", "com.whatsapp.w4b"}) {
+                            Intent direct = imageIntent(uri, caption);
+                            direct.setPackage(pkg);
+                            if (phone != null && !phone.isEmpty()) {
+                                direct.putExtra("jid", phone + "@s.whatsapp.net");
+                            }
+                            try {
+                                startActivity(direct);
+                                return;
+                            } catch (ActivityNotFoundException ignored) {
+                                // Try the next WhatsApp, then the share sheet.
+                            }
+                        }
+                    }
+                    startActivity(Intent.createChooser(imageIntent(uri, caption), "Send purchase order"));
+                }
+            });
+        }
+
+        private void askToSave(final String fileName, final String mimeType, final byte[] bytes) {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    pendingSaveBytes = bytes;
                     Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
                     intent.addCategory(Intent.CATEGORY_OPENABLE);
                     intent.setType(mimeType);

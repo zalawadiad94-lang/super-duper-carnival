@@ -166,6 +166,27 @@ export function khataKinds(type: BillType, role: PartyRole): { bill: EntryKind; 
   }
 }
 
+/** Suppliers and subcontractors: paid against purchase bills, not expenses. */
+export function isSupplierRole(role: PartyRole) {
+  return role === "supplier" || role === "subcontractor";
+}
+
+/**
+ * Expense bills made out to a supplier or subcontractor are really purchases:
+ * move them to Purchase (with the next purchase numbers), so payments to
+ * suppliers never count as expenses. The khata is unaffected (both types
+ * book the same kinds for these roles).
+ */
+export function moveSupplierExpenses(bills: Bill[], roleOf: (partyId: string) => PartyRole | undefined): Bill[] {
+  let next = nextBillNumber(bills, "purchase");
+  return bills.map((bill) => {
+    if (bill.type !== "expense" || !bill.partyId) return bill;
+    const role = roleOf(bill.partyId);
+    if (!role || !isSupplierRole(role)) return bill;
+    return { ...bill, type: "purchase", number: next++ };
+  });
+}
+
 /** "Mehta Developers'", "Raju's". */
 export function possessive(name: string) {
   return /s$/i.test(name) ? `${name}'` : `${name}'s`;

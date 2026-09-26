@@ -1,16 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
-import { Contact, MessageCircle, MessageSquareText, RotateCcw } from "lucide-react";
+import { Contact, Download, ImageIcon, MessageCircle, MessageSquareText, RotateCcw, Share2 } from "lucide-react";
 import { toast } from "sonner";
 import { DrawerFrame } from "@/components/drawers";
 import { Button, Field, SelectInput, TextArea, TextInput } from "@/components/ui";
-import { formatQty, lineTotal, round2, type BillLine } from "@/lib/bills";
+import { formatQty, lineTotal, round2 } from "@/lib/bills";
 import { canPickContact, pickContact } from "@/lib/contacts";
 import { cn } from "@/lib/cn";
 import { formatDay, formatINR, todayISO } from "@/lib/format";
-import { hasPhone, smsLink, whatsAppLink } from "@/lib/share";
+import { renderPurchaseOrder, type OrderLine } from "@/lib/po-image";
+import { hasPhone, saveImage, shareImage, smsLink, whatsAppLink } from "@/lib/share";
 import { useLedger } from "@/lib/store";
-
-export type OrderLine = Pick<BillLine, "name" | "unit" | "qty" | "rate">;
 
 type OrderDetails = {
   business: string;
@@ -75,6 +74,9 @@ export function PurchaseOrderForm({
   const [site, setSite] = useState(siteId ?? "");
   const [neededBy, setNeededBy] = useState("");
   const [edited, setEdited] = useState<string | null>(null);
+  const [poNote, setPoNote] = useState("");
+  const [image, setImage] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const [contactsAvailable, setContactsAvailable] = useState(false);
 
   useEffect(() => {
@@ -96,6 +98,45 @@ export function PurchaseOrderForm({
     [businessName, party?.name, supplierName, lines, showRates, reference, siteRow, neededBy],
   );
   const message = edited ?? generated;
+  const supplier = party?.name ?? supplierName;
+  const deliverTo = siteRow ? [siteRow.name, siteRow.location].filter(Boolean).join(", ") : "";
+  const fileName = `PO-${(reference || "order").replace(/[^A-Za-z0-9]+/g, "-")}-${todayISO()}.jpg`.replace(/-+/g, "-");
+
+  // Redraw the JPG preview when the order changes (debounced while typing).
+  useEffect(() => {
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void renderPurchaseOrder({
+        business: businessName,
+        supplier,
+        supplierPhone: hasPhone(phone) ? phone.trim() : "",
+        reference,
+        lines,
+        showRates,
+        deliverTo,
+        neededBy,
+        note: poNote,
+      }).then((url) => {
+        if (!cancelled) setImage(url);
+      });
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [businessName, supplier, phone, reference, lines, showRates, deliverTo, neededBy, poNote]);
+
+  async function sendImage(whatsapp: boolean) {
+    if (!image || busy) return;
+    setBusy(true);
+    onSend();
+    try {
+      const how = await shareImage(image, fileName, `Purchase order ${reference} from ${businessName}`, phone, whatsapp);
+      if (how === "downloaded") toast.success("Purchase order saved as JPG — attach it in WhatsApp");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   function onSend() {
     if (party && !party.phone.trim() && hasPhone(phone)) {
@@ -154,38 +195,71 @@ export function PurchaseOrderForm({
           className="size-5 accent-[var(--color-brass)]"
         />
       </label>
-      <Field label="Message">
-        <TextArea value={message} onChange={(event) => setEdited(event.target.value)} className="min-h-56 font-mono text-sm" />
+      <Field label="Note on the order (optional)">
+        <TextInput value={poNote} onChange={(event) => setPoNote(event.target.value)} placeholder="Unload at gate 2, call before coming" />
       </Field>
-      {edited !== null ? (
-        <button type="button" onClick={() => setEdited(null)} className="-mt-2 inline-flex items-center gap-1 self-start text-xs font-semibold text-brass">
-          <RotateCcw className="size-3.5" aria-hidden="true" />
-          Reset message
-        </button>
-      ) : null}
-      {!hasPhone(phone) ? (
-        <p className="-mt-1 text-xs text-muted">No number? WhatsApp and SMS will ask whom to send it to.</p>
-      ) : null}
-      <div className="grid grid-cols-2 gap-2">
-        <a
-          href={whatsAppLink(phone, message)}
-          target="_blank"
-          rel="noreferrer"
-          onClick={onSend}
-          className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-get px-4 text-sm font-semibold text-bg"
-        >
-          <MessageCircle className="size-4" aria-hidden="true" />
-          WhatsApp
-        </a>
-        <a
-          href={smsLink(phone, message)}
-          onClick={onSend}
-          className={cn("inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-ink px-4 text-sm font-semibold text-bg")}
-        >
-          <MessageSquareText className="size-4" aria-hidden="true" />
-          SMS
-        </a>
+
+      <div className="overflow-hidden rounded-2xl border border-line bg-bg p-2">
+        {image ? (
+          <img src={image} alt="Purchase order preview" className="w-full rounded-xl shadow-sm" />
+        ) : (
+          <div className="flex h-40 items-center justify-center gap-2 text-sm text-muted">
+            <ImageIcon className="size-4" aria-hidden="true" />
+            Making the purchase order…
+          </div>
+        )}
       </div>
+
+      <Button className="h-14 w-full bg-get text-base" disabled={!image || busy} onClick={() => void sendImage(true)}>
+        <MessageCircle className="size-5" aria-hidden="true" />
+        Send JPG on WhatsApp
+      </Button>
+      <div className="-mt-2 grid grid-cols-2 gap-2">
+        <Button variant="soft" disabled={!image || busy} onClick={() => void sendImage(false)}>
+          <Share2 className="size-4" aria-hidden="true" />
+          Share image
+        </Button>
+        <Button variant="soft" disabled={!image} onClick={() => image && saveImage(image, fileName)}>
+          <Download className="size-4" aria-hidden="true" />
+          Save JPG
+        </Button>
+      </div>
+      {!hasPhone(phone) ? (
+        <p className="-mt-2 text-xs text-muted">No number? WhatsApp will ask which chat to send it to.</p>
+      ) : null}
+
+      <details className="rounded-xl border border-line px-3 py-2">
+        <summary className="cursor-pointer text-sm font-semibold text-muted">Send as text instead</summary>
+        <div className="mt-3 flex flex-col gap-3">
+          <TextArea value={message} onChange={(event) => setEdited(event.target.value)} className="min-h-48 font-mono text-sm" aria-label="Message" />
+          {edited !== null ? (
+            <button type="button" onClick={() => setEdited(null)} className="inline-flex items-center gap-1 self-start text-xs font-semibold text-brass">
+              <RotateCcw className="size-3.5" aria-hidden="true" />
+              Reset message
+            </button>
+          ) : null}
+          <div className="grid grid-cols-2 gap-2">
+            <a
+              href={whatsAppLink(phone, message)}
+              target="_blank"
+              rel="noreferrer"
+              onClick={onSend}
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-get px-4 text-sm font-semibold text-get"
+            >
+              <MessageCircle className="size-4" aria-hidden="true" />
+              WhatsApp text
+            </a>
+            <a
+              href={smsLink(phone, message)}
+              onClick={onSend}
+              className={cn("inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-ink px-4 text-sm font-semibold text-ink")}
+            >
+              <MessageSquareText className="size-4" aria-hidden="true" />
+              SMS
+            </a>
+          </div>
+        </div>
+      </details>
     </div>
   );
 }
@@ -200,7 +274,7 @@ export function PurchaseOrderDrawer({
   onOpenChange: (open: boolean) => void;
 } & Parameters<typeof PurchaseOrderForm>[0]) {
   return (
-    <DrawerFrame open={open} onOpenChange={onOpenChange} title="Send purchase order" lede="Sends the item list to the supplier's phone.">
+    <DrawerFrame open={open} onOpenChange={onOpenChange} title="Send purchase order" lede="A JPG of the order, sent to the supplier's WhatsApp.">
       {open ? <PurchaseOrderForm {...order} /> : null}
       <Button variant="ghost" className="mt-2 w-full" onClick={() => onOpenChange(false)}>
         Done

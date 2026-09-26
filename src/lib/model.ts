@@ -1,4 +1,4 @@
-import { parseBills, parseItems, sampleBills, sampleItems, type Bill, type Item } from "@/lib/bills";
+import { moveSupplierExpenses, parseBills, parseItems, sampleBills, sampleItems, type Bill, type Item } from "@/lib/bills";
 import { daysAgo } from "@/lib/format";
 import { parseAdjustments, sampleAdjustments, type StockAdjustment } from "@/lib/stock";
 
@@ -389,13 +389,15 @@ export function parseBooks(value: unknown): Books | null {
 
   const items = parseItems(value.items);
   if (!items) return null;
-  const bills = parseBills(value.bills, {
+  const parsedBills = parseBills(value.bills, {
     parties: partyIds,
     sites: siteIds,
     entries: new Set(entries.map((item) => item.id)),
     items: new Set(items.map((item) => item.id)),
   });
-  if (!bills) return null;
+  if (!parsedBills) return null;
+  const roles = new Map(parties.map((party) => [party.id, party.role]));
+  const bills = moveSupplierExpenses(parsedBills, (id) => roles.get(id));
   const stockAdjustments = parseAdjustments(value.stockAdjustments, {
     items: new Set(items.map((item) => item.id)),
     sites: siteIds,

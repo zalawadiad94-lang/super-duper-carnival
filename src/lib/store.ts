@@ -3,6 +3,7 @@ import { persist } from "zustand/middleware";
 import {
   billLabel,
   khataKinds,
+  moveSupplierExpenses,
   khataNote,
   type Bill,
   type BillLine,
@@ -411,7 +412,8 @@ export const useLedger = create<LedgerState>()(
       name: "sitekhata-books-v1",
       // v1 added bills, v2 items and bill rows, v3 stock adjustments and
       // low-stock levels. Books saved before start with none (not the sample's).
-      version: 3,
+      // v4 moves expense bills made out to suppliers into purchases.
+      version: 4,
       migrate: (persisted) => {
         const state = {
           bills: [],
@@ -419,9 +421,13 @@ export const useLedger = create<LedgerState>()(
           stockAdjustments: [],
           ...(persisted as Partial<LedgerState>),
         } as LedgerState;
+        const roles = new Map((state.parties ?? []).map((party) => [party.id, party.role]));
         return {
           ...state,
-          bills: state.bills.map((bill) => ({ ...bill, lines: bill.lines ?? [] })),
+          bills: moveSupplierExpenses(
+            state.bills.map((bill) => ({ ...bill, lines: bill.lines ?? [] })),
+            (id) => roles.get(id),
+          ),
           items: state.items.map((item) => ({ ...item, minStock: item.minStock ?? null })),
         };
       },

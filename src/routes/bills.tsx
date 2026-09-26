@@ -53,6 +53,7 @@ function BillsPage() {
   const tab: BillType = stockTab ? "sale" : currentTab;
   const navigate = Route.useNavigate();
   const bills = useLedger((state) => state.bills);
+  const entries = useLedger((state) => state.entries);
   const parties = useLedger((state) => state.parties);
   const openBillForm = useUi((state) => state.openBillForm);
   const alerts = useLedger((state) => {
@@ -76,17 +77,26 @@ function BillsPage() {
   const totals = useMemo(() => {
     const monthly: Record<BillType, number> = { sale: 0, purchase: 0, expense: 0 };
     let todayIn = 0;
-    let todayOut = 0;
+    // Kept apart: paying a supplier is not an expense.
+    let suppliersPaid = 0;
+    let expensesPaid = 0;
     for (const bill of bills) {
       if (bill.date.startsWith(month)) monthly[bill.type] += bill.amount;
       for (const payment of bill.payments) {
         if (payment.date !== today) continue;
         if (bill.type === "sale") todayIn += payment.amount;
-        else todayOut += payment.amount;
+        else if (bill.type === "expense") expensesPaid += payment.amount;
+        // Purchase payments with a party are counted from the khata below.
+        else if (!payment.entryId) suppliersPaid += payment.amount;
       }
     }
-    return { monthly, todayIn, todayOut };
-  }, [bills, month, today]);
+    for (const entry of entries) {
+      if (entry.date === today && (entry.kind === "supplier_paid" || entry.kind === "sub_paid")) {
+        suppliersPaid += entry.amount;
+      }
+    }
+    return { monthly, todayIn, suppliersPaid, expensesPaid };
+  }, [bills, entries, month, today]);
 
   const tabBills = useMemo(() => bills.filter((bill) => bill.type === tab), [bills, tab]);
   const rows = useMemo(() => {
@@ -140,24 +150,28 @@ function BillsPage() {
           </button>
         ))}
       </div>
-      <div className="mt-2 flex items-center justify-between gap-3 rounded-2xl border border-line bg-surface px-4 py-3">
-        <div className="flex gap-6">
+      <div className="mt-2 rounded-2xl border border-line bg-surface px-4 py-3">
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted">Today</p>
+          <Link to="/reports" className="inline-flex items-center gap-1 text-sm font-semibold text-brass">
+            Cashbook
+            <ChevronRight className="size-4" aria-hidden="true" />
+          </Link>
+        </div>
+        <div className="mt-1 grid grid-cols-3 gap-2">
           <div>
             <Money value={totals.todayIn} tone="get" className="block text-lg" />
-            <span className="text-xs text-muted">Today's in</span>
+            <span className="text-xs text-muted">Received</span>
           </div>
           <div>
-            <Money value={totals.todayOut} tone="give" className="block text-lg" />
-            <span className="text-xs text-muted">Today's out</span>
+            <Money value={totals.suppliersPaid} tone="give" className="block text-lg" />
+            <span className="text-xs text-muted">Paid suppliers</span>
+          </div>
+          <div>
+            <Money value={totals.expensesPaid} tone="give" className="block text-lg" />
+            <span className="text-xs text-muted">Expenses paid</span>
           </div>
         </div>
-        <Link
-          to="/reports"
-          className="inline-flex items-center gap-1 text-sm font-semibold text-brass"
-        >
-          Cashbook
-          <ChevronRight className="size-4" aria-hidden="true" />
-        </Link>
       </div>
 
       <div role="tablist" className="bg-header mt-4 grid grid-cols-4 rounded-xl p-1">
