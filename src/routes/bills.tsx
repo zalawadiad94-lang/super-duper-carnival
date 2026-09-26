@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { ChevronRight, FilePlus2, Search } from "lucide-react";
 import { StockRegister } from "@/components/stock";
+import { UnpaidPanel } from "@/components/unpaid-panel";
 import { Money } from "@/components/money";
 import { Button, EmptyState, PageIntro, TextInput } from "@/components/ui";
 import {
@@ -88,7 +89,6 @@ function BillsPage() {
   }, [bills, month, today]);
 
   const tabBills = useMemo(() => bills.filter((bill) => bill.type === tab), [bills, tab]);
-  const due = tabBills.reduce((sum, bill) => sum + billDue(bill), 0);
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
     return sortBills(tabBills).filter((bill) => {
@@ -189,6 +189,7 @@ function BillsPage() {
         </div>
       ) : (
         <>
+          <UnpaidPanel type={tab} bills={bills} nameOf={partyName} />
           <div className="mt-3 flex flex-col gap-2">
             <div className="relative">
               <Search
@@ -220,16 +221,6 @@ function BillsPage() {
                   </button>
                 ))}
               </div>
-              {due > 0 ? (
-                <p className="shrink-0 text-right text-xs text-muted">
-                  {tab === "sale" ? "To collect" : "To pay"}
-                  <Money
-                    value={due}
-                    tone={tab === "sale" ? "get" : "give"}
-                    className="block text-base"
-                  />
-                </p>
-              ) : null}
             </div>
           </div>
 

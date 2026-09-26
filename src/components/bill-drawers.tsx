@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChevronLeft, PackagePlus, X } from "lucide-react";
+import { ChevronLeft, PackagePlus, Send, X } from "lucide-react";
 import { toast } from "sonner";
 import { DrawerFrame } from "@/components/drawers";
 import { ItemForm, ItemPicker } from "@/components/items";
+import { PurchaseOrderForm } from "@/components/purchase-order";
 import { Money } from "@/components/money";
 import { Button, Field, SelectInput, TextArea, TextInput } from "@/components/ui";
 import {
@@ -28,7 +29,7 @@ import { itemStock } from "@/lib/stock";
 import { useLedger, useUi } from "@/lib/store";
 
 type PayMode = "unpaid" | "full" | "part";
-type View = "form" | "pick" | "create";
+type View = "form" | "pick" | "create" | "order";
 
 /** A bill row while editing: qty and rate as typed. */
 type DraftLine = Omit<BillLine, "qty" | "rate"> & { qty: string; rate: string };
@@ -267,6 +268,8 @@ export function BillDrawer() {
           ? "Add items to your bill"
           : view === "create"
             ? "Create new item"
+            : view === "order"
+              ? "Send purchase order"
             : existing
               ? `Edit ${billLabel(existing)}`
               : `New ${meta.tab.toLowerCase()} bill`
@@ -290,6 +293,28 @@ export function BillDrawer() {
           />
           <Button className="sticky bottom-0 w-full shadow-lg" onClick={() => setView("form")}>
             Done · {lines.length} item{lines.length === 1 ? "" : "s"} · <Money value={itemsTotal} className="text-bg" />
+          </Button>
+        </div>
+      ) : view === "order" ? (
+        <div className="flex flex-col gap-3">
+          <button type="button" onClick={() => setView("form")} className="inline-flex items-center gap-1 text-sm font-semibold text-muted">
+            <ChevronLeft className="size-4" aria-hidden="true" />
+            Back to bill
+          </button>
+          <PurchaseOrderForm
+            lines={lines.map((line) => ({
+              name: line.name,
+              unit: line.unit,
+              qty: Number.isNaN(toNum(line.qty)) ? 0 : toNum(line.qty),
+              rate: Number.isNaN(toNum(line.rate)) ? 0 : toNum(line.rate),
+            }))}
+            partyId={partyId || null}
+            supplierName={name}
+            siteId={siteId || null}
+            reference={`${BILL_META.purchase.numberLabel} #${number}`}
+          />
+          <Button variant="ghost" className="w-full border border-line" onClick={() => setView("form")}>
+            Back to bill
           </Button>
         </div>
       ) : view === "create" ? (
@@ -378,6 +403,12 @@ export function BillDrawer() {
               <PackagePlus className="size-4" aria-hidden="true" />
               {lines.length ? "Add more items" : "Add items"}
             </Button>
+            {type === "purchase" && lines.length ? (
+              <Button variant="navy" className="mt-2 w-full" onClick={() => setView("order")}>
+                <Send className="size-4" aria-hidden="true" />
+                Send purchase order
+              </Button>
+            ) : null}
             {lines.length ? (
               <p className="mt-2 text-right text-xs text-muted">
                 {type === "sale" ? "Stock goes down" : "Stock goes up"} by these quantities

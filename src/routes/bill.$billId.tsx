@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
-import { ChevronLeft, MessageCircle, Pencil, Trash2 } from "lucide-react";
+import { ChevronLeft, MessageCircle, Pencil, Send, Trash2 } from "lucide-react";
+import { PurchaseOrderDrawer } from "@/components/purchase-order";
 import { toast } from "sonner";
 import { Money } from "@/components/money";
 import { Button, ConfirmDialog } from "@/components/ui";
@@ -62,6 +63,7 @@ function BillPage() {
   const openPaymentForm = useUi((state) => state.openPaymentForm);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [removePayment, setRemovePayment] = useState<string | null>(null);
+  const [orderOpen, setOrderOpen] = useState(false);
   const bill = bills.find((item) => item.id === billId);
 
   if (!bill) {
@@ -197,6 +199,13 @@ function BillPage() {
         )}
       </div>
 
+      {bill.type === "purchase" && bill.lines.length ? (
+        <Button variant="navy" className="mt-2 w-full" onClick={() => setOrderOpen(true)}>
+          <Send className="size-4" aria-hidden="true" />
+          Send purchase order
+        </Button>
+      ) : null}
+
       <h2 className="mt-6 font-display text-xl">Payments</h2>
       {payments.length === 0 ? (
         <p className="mt-2 text-sm text-muted">No payments yet.</p>
@@ -225,6 +234,15 @@ function BillPage() {
         Delete bill
       </Button>
 
+      <PurchaseOrderDrawer
+        open={orderOpen}
+        onOpenChange={setOrderOpen}
+        lines={bill.lines}
+        partyId={bill.partyId}
+        supplierName={name}
+        siteId={bill.siteId}
+        reference={billLabel(bill)}
+      />
       <ConfirmDialog
         open={confirmDelete}
         title={`Delete ${billLabel(bill)}?`}

@@ -79,7 +79,7 @@ type LedgerState = Books & {
   addBill: (input: BillInput, paidNow: number) => string;
   updateBill: (id: string, input: BillInput) => void;
   deleteBill: (id: string) => void;
-  addBillPayment: (billId: string, input: PaymentInput) => void;
+  addBillPayment: (billId: string, input: PaymentInput) => string;
   deleteBillPayment: (billId: string, paymentId: string) => void;
   addItem: (input: ItemInput) => string;
   updateItem: (id: string, input: ItemInput) => void;
@@ -327,11 +327,12 @@ export const useLedger = create<LedgerState>()(
             entries: state.entries.filter((entry) => !linked.has(entry.id)),
           };
         }),
-      addBillPayment: (billId, input) =>
+      addBillPayment: (billId, input) => {
+        const paymentId = uid();
         set((state) => {
           const bill = state.bills.find((item) => item.id === billId);
           if (!bill) return {};
-          const payment: BillPayment = { id: uid(), amount: input.amount, date: input.date, entryId: null };
+          const payment: BillPayment = { id: paymentId, amount: input.amount, date: input.date, entryId: null };
           const synced = syncBill({ ...bill, payments: [...bill.payments, payment] }, state.parties, state.entries, {
             bill: false,
             payments: new Set([payment.id]),
@@ -340,7 +341,9 @@ export const useLedger = create<LedgerState>()(
             bills: state.bills.map((item) => (item.id === billId ? synced.bill : item)),
             entries: synced.entries,
           };
-        }),
+        });
+        return paymentId;
+      },
       deleteBillPayment: (billId, paymentId) =>
         set((state) => {
           const bill = state.bills.find((item) => item.id === billId);
